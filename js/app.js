@@ -72,11 +72,10 @@ async function initialize() {
         document.getElementById('app-container').classList.remove('hidden');
         
     } catch (error) {
-        // **DEBUGGING CHANGE**: The signOut() call is temporarily disabled.
-        // This will prevent the page from refreshing so we can see the error.
+        // **RESTORED**: The automatic sign-out is re-enabled for production.
         console.error("Initialization Failed:", error);
         showToast(error.message || 'Could not initialize the application.', 'error');
-        // signOut(); 
+        signOut(); 
     }
 }
 
