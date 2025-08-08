@@ -8,6 +8,48 @@ export const initUIManager = (state) => {
     appState = state;
 };
 
+// --- Helper function to format timestamps ---
+function formatLastSeen(timestamp) {
+    if (!timestamp) return 'Offline';
+    const now = new Date();
+    const lastSeen = timestamp.toDate();
+    const diffSeconds = Math.floor((now - lastSeen) / 1000);
+    const diffDays = Math.floor(diffSeconds / 86400);
+
+    if (diffSeconds < 60) return 'Last seen: just now';
+    if (diffSeconds < 3600) return `Last seen: ${Math.floor(diffSeconds / 60)}m ago`;
+    if (diffDays === 0) return 'Last seen: today';
+    if (diffDays === 1) return 'Last seen: yesterday';
+    return `Last seen: ${lastSeen.toLocaleDateString()}`;
+}
+
+export const renderTeamList = (team) => {
+    const teamListEl = document.getElementById('team-list');
+    if (!teamListEl) return;
+    teamListEl.innerHTML = '';
+    
+    team.sort((a, b) => (b.online || false) - (a.online || false));
+
+    team.forEach(user => {
+        const userEl = document.createElement('li');
+        userEl.className = 'team-member';
+        const statusClass = user.online ? 'online' : 'offline';
+        const statusText = user.online ? 'Online' : formatLastSeen(user.last_changed);
+
+        userEl.innerHTML = `
+            <div class="team-member-avatar">
+                ${user.nickname.charAt(0).toUpperCase()}
+                <span class="presence-dot ${statusClass}"></span>
+            </div>
+            <div class="team-member-info">
+                <span class="team-member-name">${user.nickname}</span>
+                <span class="team-member-status ${statusClass}">${statusText}</span>
+            </div>
+        `;
+        teamListEl.appendChild(userEl);
+    });
+};
+
 const listView = document.getElementById('list-view');
 const kanbanView = document.getElementById('kanban-view');
 const taskModal = document.getElementById('task-modal');
@@ -31,22 +73,15 @@ export const updateUserInfo = (profile, company) => {
 
 export const hideProjectHeader = () => {
     const projectHeader = document.getElementById('project-header');
-    if (projectHeader) {
-        projectHeader.classList.add('hidden');
-    }
+    if (projectHeader) projectHeader.classList.add('hidden');
 };
 
 export const updateProjectHeader = (project) => {
     const projectHeader = document.getElementById('project-header');
     if (!projectHeader || !project) return;
-
     document.getElementById('project-name-header').textContent = project.name;
     const logoImg = document.getElementById('project-logo');
-    if (project.logoURL) {
-        logoImg.src = project.logoURL;
-    } else {
-        logoImg.src = `https://placehold.co/48x48/E9ECEF/495057?text=${project.name.charAt(0).toUpperCase()}`;
-    }
+    logoImg.src = project.logoURL || `https://placehold.co/48x48/E9ECEF/495057?text=${project.name.charAt(0).toUpperCase()}`;
     projectHeader.classList.remove('hidden');
 };
 
@@ -79,15 +114,9 @@ export const switchView = (viewId) => {
 
 export const renderView = (viewId, tasks) => {
     switch(viewId) {
-        case 'list-view':
-            renderListView(tasks);
-            break;
-        case 'kanban-view':
-            renderKanbanView(tasks);
-            break;
-        case 'calendar-view':
-            renderCalendarView(tasks);
-            break;
+        case 'list-view': renderListView(tasks); break;
+        case 'kanban-view': renderKanbanView(tasks); break;
+        case 'calendar-view': renderCalendarView(tasks); break;
     }
 };
 
@@ -97,27 +126,26 @@ const createTaskElement = (task) => {
     item.dataset.id = task.id;
     item.draggable = true;
     const priorityClass = `priority-${task.priority || 'low'}`;
-    const mainContent = document.createElement('div');
-    mainContent.className = 'task-item-main';
-    mainContent.innerHTML = `
-        <input type="checkbox" class="task-checkbox" ${task.status === 'done' ? 'checked' : ''}>
-        <div class="task-content">
-            <div class="task-name">${task.name}</div>
-            <div class="task-details">
-                ${task.dueDate ? `<span>📅 ${new Date(task.dueDate).toLocaleDateString()}</span>` : ''}
-                <span class="priority-label"><span class="priority-dot ${priorityClass}"></span> ${task.priority}</span>
+    item.innerHTML = `
+        <div class="task-item-main">
+            <input type="checkbox" class="task-checkbox" ${task.status === 'done' ? 'checked' : ''}>
+            <div class="task-content">
+                <div class="task-name">${task.name}</div>
+                <div class="task-details">
+                    ${task.dueDate ? `<span>📅 ${new Date(task.dueDate).toLocaleDateString()}</span>` : ''}
+                    <span class="priority-label"><span class="priority-dot ${priorityClass}"></span> ${task.priority}</span>
+                </div>
+            </div>
+            <div class="task-actions">
+                <button class="edit-task-btn">✏️</button>
+                <button class="delete-task-btn">🗑️</button>
             </div>
         </div>
-        <div class="task-actions">
-            <button class="edit-task-btn">✏️</button>
-            <button class="delete-task-btn">🗑️</button>
+        <div class="task-item-footer">
+            <div class="assignee-avatars"></div>
         </div>
     `;
-    item.appendChild(mainContent);
-    const footer = document.createElement('div');
-    footer.className = 'task-item-footer';
-    const assigneesContainer = document.createElement('div');
-    assigneesContainer.className = 'assignee-avatars';
+    const assigneesContainer = item.querySelector('.assignee-avatars');
     if (task.assignedTo && task.assignedTo.length > 0) {
         task.assignedTo.forEach(uid => {
             const user = appState.team.find(u => u.id === uid);
@@ -130,8 +158,6 @@ const createTaskElement = (task) => {
             }
         });
     }
-    footer.appendChild(assigneesContainer);
-    item.appendChild(footer);
     item.querySelector('.task-checkbox').addEventListener('change', (e) => taskController.toggleTaskStatus(task.id, e.target.checked));
     item.querySelector('.delete-task-btn').addEventListener('click', () => taskController.deleteTask(task.id));
     item.querySelector('.edit-task-btn').addEventListener('click', () => openModal(taskModal, task));
@@ -143,7 +169,7 @@ const renderListView = (tasks) => {
     listView.innerHTML = '';
     const taskList = document.createElement('div');
     taskList.className = 'task-list';
-    if (tasks.length === 0) {
+    if (!tasks || tasks.length === 0) {
         taskList.innerHTML = `<p class="empty-state">No tasks yet. Add one to get started!</p>`;
     } else {
         tasks.forEach(task => taskList.appendChild(createTaskElement(task)));
@@ -157,14 +183,10 @@ const renderKanbanView = (tasks) => {
         'in-progress': document.getElementById('kanban-in-progress'),
         done: document.getElementById('kanban-done'),
     };
-    Object.values(columns).forEach(col => {
-        if (col) col.innerHTML = '';
-    });
-    tasks.forEach(task => {
+    Object.values(columns).forEach(col => { if (col) col.innerHTML = ''; });
+    (tasks || []).forEach(task => {
         const status = task.status || 'todo';
-        if(columns[status]) {
-            columns[status].appendChild(createTaskElement(task));
-        }
+        if(columns[status]) columns[status].appendChild(createTaskElement(task));
     });
 };
 
@@ -186,7 +208,7 @@ const renderCalendarView = (tasks) => {
         dayEl.innerHTML = `<div class="day-number">${day}</div><div class="calendar-tasks"></div>`;
         const tasksContainer = dayEl.querySelector('.calendar-tasks');
         const today = new Date(year, month, day);
-        const tasksForDay = tasks.filter(t => t.dueDate && new Date(t.dueDate).toDateString() === today.toDateString());
+        const tasksForDay = (tasks || []).filter(t => t.dueDate && new Date(t.dueDate).toDateString() === today.toDateString());
         tasksForDay.forEach(task => {
             const taskEl = document.createElement('div');
             taskEl.className = 'calendar-task';
@@ -196,21 +218,6 @@ const renderCalendarView = (tasks) => {
         });
         grid.appendChild(dayEl);
     }
-};
-
-export const renderTeamList = (team) => {
-    const teamListEl = document.getElementById('team-list');
-    if (!teamListEl) return;
-    teamListEl.innerHTML = '';
-    team.forEach(user => {
-        const userEl = document.createElement('li');
-        userEl.className = 'team-member';
-        userEl.innerHTML = `
-            <span class="presence-dot ${user.online ? 'online' : 'offline'}"></span>
-            <span>${user.nickname}</span>
-        `;
-        teamListEl.appendChild(userEl);
-    });
 };
 
 export const setupModals = () => {
@@ -248,7 +255,7 @@ export const setupModals = () => {
             e.preventDefault();
             const taskId = document.getElementById('edit-task-id').value;
             const input = document.getElementById('new-subtask-input');
-            if (input.value.trim()) {
+            if (input && input.value.trim()) {
                 taskController.addSubtask(taskId, input.value.trim());
                 input.value = '';
             }
@@ -260,7 +267,7 @@ export const setupModals = () => {
             e.preventDefault();
             const taskId = document.getElementById('edit-task-id').value;
             const input = document.getElementById('new-comment-input');
-            if (input.value.trim()) {
+            if (input && input.value.trim()) {
                 taskController.addComment(taskId, input.value.trim());
                 input.value = '';
             }
@@ -332,9 +339,9 @@ const renderComments = (comments) => {
     const commentsList = document.getElementById('comments-list');
     if (!commentsList) return;
     commentsList.innerHTML = '';
-    comments.forEach(comment => {
+    (comments || []).forEach(comment => {
         const item = document.createElement('div');
-        const author = comment.author.nickname;
+        const author = comment.author?.nickname || 'User';
         const timestamp = comment.createdAt?.toDate().toLocaleString() || '...';
         if (comment.type === 'comment') {
             item.className = 'comment-item';
