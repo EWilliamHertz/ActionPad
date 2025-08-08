@@ -22,7 +22,6 @@ body {
 
 .hidden { display: none !important; }
 
-/* --- Toast Notifications --- */
 #toast-container {
     position: fixed;
     top: 20px;
@@ -48,7 +47,6 @@ body {
     to { opacity: 1; transform: translateX(0); }
 }
 
-/* --- Auth & Settings Page Styles --- */
 .auth-page-container, .settings-page-container {
     display: flex;
     flex-direction: column;
@@ -98,7 +96,6 @@ body {
 .form-group input.invalid { border-color: var(--priority-high); }
 hr { border: none; border-top: 1px solid var(--border-color); margin: 1rem 0; }
 
-/* --- Language Footer --- */
 .language-footer { position: fixed; bottom: 0; width: 100%; padding: 1rem; box-sizing: border-box; background-color: var(--background-color); }
 .language-switcher { display: flex; justify-content: center; gap: 1rem; }
 .lang-btn {
@@ -108,14 +105,14 @@ hr { border: none; border-top: 1px solid var(--border-color); margin: 1rem 0; }
 .lang-btn:hover { color: var(--text-color); }
 .lang-btn.active { color: var(--primary-color); font-weight: 600; background-color: rgba(74, 144, 226, 0.1); }
 
-/* --- Main App Layout --- */
 #app-container { display: flex; flex-direction: column; height: 100vh; }
-header {
+.main-header {
     display: flex; justify-content: space-between; align-items: center;
     padding: 1rem 2rem; background: var(--surface-color); border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
 }
 .header-left, .header-center, .header-controls { display: flex; align-items: center; gap: 1.5rem; }
-header h1 { margin: 0; font-size: 1.5rem; }
+.main-header h1 { margin: 0; font-size: 1.5rem; }
 #user-info { display: flex; align-items: center; gap: 10px; }
 #user-info div { display: flex; flex-direction: column; align-items: flex-end; }
 #user-nickname { font-weight: 600; }
@@ -143,10 +140,47 @@ aside ul { list-style: none; padding: 0; margin: 0; }
 .view-btn.active, .project-item.active { background-color: var(--primary-color); color: white; font-weight: 500; }
 main { padding: 2rem; overflow-y: auto; }
 
-/* --- Search Bar --- */
-#search-bar { width: 300px; padding: 0.6rem 1rem; border: 1px solid var(--border-color); border-radius: 20px; }
+#project-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.project-header-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+#project-logo {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    object-fit: cover;
+    background-color: var(--background-color);
+}
+#project-name-header {
+    margin: 0;
+    font-size: 1.75rem;
+    font-weight: 600;
+}
+#change-logo-btn {
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--subtle-text-color);
+    padding: 0.6rem 1.2rem;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+#change-logo-btn:hover {
+    background-color: var(--background-color);
+    border-color: var(--subtle-text-color);
+}
 
-/* --- Projects Panel --- */
+#search-bar { width: 300px; padding: 0.6rem 1rem; border: 1px solid var(--border-color); border-radius: 20px; }
 .projects-panel { margin-top: 2rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem; }
 #project-list { margin-bottom: 1rem; }
 #add-project-form { display: flex; }
@@ -159,7 +193,6 @@ main { padding: 2rem; overflow-y: auto; }
     border: none; border-radius: 0 6px 6px 0; cursor: pointer;
 }
 
-/* --- Team Panel --- */
 #team-panel { margin-top: 2rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem; }
 #team-list { display: flex; flex-direction: column; gap: 1rem; }
 .team-member { display: flex; align-items: center; gap: 0.75rem; }
@@ -167,11 +200,9 @@ main { padding: 2rem; overflow-y: auto; }
 .presence-dot.online { background-color: #28a745; }
 .presence-dot.offline { background-color: #ced4da; }
 
-/* --- Sidebar Footer --- */
 .sidebar-footer { margin-top: auto; padding-top: 1.5rem; border-top: 1px solid var(--border-color); }
 .settings-link { color: var(--subtle-text-color); text-decoration: none; font-weight: 500; }
 
-/* --- Task Item & Kanban --- */
 .task-item { display: flex; flex-direction: column; padding: 1rem; background: var(--surface-color); border-radius: 6px; box-shadow: var(--shadow); transition: box-shadow 0.2s; cursor: grab; }
 .task-item-main { display: flex; align-items: center; gap: 1rem; }
 .task-item.done .task-name { text-decoration: line-through; color: var(--subtle-text-color); }
@@ -198,43 +229,13 @@ main { padding: 2rem; overflow-y: auto; }
 .avatar:first-child { margin-left: 0; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
 
-/* --- Modal Styles --- */
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; }
 .modal-content { background: var(--surface-color); padding: 2rem; border-radius: 8px; width: 90%; max-width: 600px; position: relative; max-height: 90vh; overflow-y: auto; }
 .modal-close { position: absolute; top: 1rem; right: 1rem; background: none; border: none; font-size: 1.5rem; cursor: pointer; }
 .modal-section { margin-bottom: 1.5rem; }
 .modal-section label { display: block; font-weight: 600; margin-bottom: 0.5rem; }
 .modal-actions { display: flex; justify-content: flex-end; margin-top: 1.5rem; }
-#attachments-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 1rem; }
-.attachment-item { display: flex; align-items: center; justify-content: space-between; padding: 10px; background: var(--background-color); border-radius: 6px; }
-#upload-progress { width: 100%; margin-top: 10px; }
-.comment-input-wrapper { position: relative; }
-#mention-suggestions {
-    position: absolute; bottom: 100%; left: 0; background: white; border: 1px solid var(--border-color);
-    border-radius: 6px; box-shadow: var(--shadow); max-height: 150px; overflow-y: auto; width: 100%;
-}
-.mention-item { padding: 10px; cursor: pointer; }
-.mention-item:hover { background-color: var(--background-color); }
 
-/* --- Settings Page --- */
-.settings-page-container { max-width: 800px; width: 100%; }
-.settings-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; width: 100%; }
-.back-link { color: var(--primary-color); text-decoration: none; font-weight: 500; }
-.settings-main { display: grid; gap: 2rem; width: 100%; }
-.settings-card { background: var(--surface-color); padding: 2rem; border-radius: 12px; box-shadow: var(--shadow); }
-.settings-form button {
-    padding: 0.9rem; background-color: var(--primary-color); color: white; border: none;
-    border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: 600;
-    margin-top: 1rem; transition: background-color 0.2s; float: right;
-}
-.avatar-upload-container { text-align: center; margin-bottom: 1.5rem; }
-#avatar-preview { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 1rem; border: 2px solid var(--border-color); }
-#avatar-upload-button {
-    background: none; border: 1px solid var(--primary-color); color: var(--primary-color);
-    padding: 0.6rem 1.2rem; border-radius: 6px; cursor: pointer;
-}
-
-/* --- Hamburger Menu & Responsive --- */
 .hamburger-menu { display: none; flex-direction: column; justify-content: space-around; width: 30px; height: 30px; background: transparent; border: none; cursor: pointer; padding: 0; z-index: 1100; }
 .hamburger-menu span { width: 30px; height: 3px; background-color: var(--text-color); border-radius: 10px; transition: all 0.3s linear; }
 
