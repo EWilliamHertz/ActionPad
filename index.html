@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ActionPad</title>
+    
     <link rel="stylesheet" href="style.css">
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -21,7 +23,7 @@
                     <button type="submit">Login</button>
                     <p class="auth-error" id="login-error"></p>
                 </form>
-                <form id="register-form" class="auth-form">
+                <form id="register-form" class="auth-form" style="display:none;">
                     <h3>Register</h3>
                     <input type="email" id="register-email" placeholder="Email" required>
                     <input type="password" id="register-password" placeholder="Password" minlength="6" required>
@@ -33,7 +35,6 @@
              <p class="auth-toggle" style="display:none;">Already have an account? <a href="#" id="show-login">Login here</a></p>
         </div>
     </div>
-
 
     <div id="app-container" class="hidden">
         <header>
@@ -54,7 +55,7 @@
                         <li><button class="view-btn" data-view="calendar-view">Calendar</button></li>
                     </ul>
                 </nav>
-                 </aside>
+            </aside>
 
             <main>
                 <div class="task-creation-area">
@@ -64,8 +65,7 @@
                     </form>
                 </div>
 
-                <div id="list-view" class="view active">
-                    </div>
+                <div id="list-view" class="view active"></div>
 
                 <div id="kanban-view" class="view">
                     <div class="kanban-board">
@@ -93,8 +93,7 @@
                     <div class="calendar-grid-header">
                         <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
                     </div>
-                    <div id="calendar-grid">
-                        </div>
+                    <div id="calendar-grid"></div>
                 </div>
             </main>
         </div>
@@ -129,10 +128,6 @@
     <footer>
         <p>&copy; 2025 ActionPad. All rights reserved.</p>
     </footer>
-
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
 
     <script type="module" src="app.js"></script>
 </body>
