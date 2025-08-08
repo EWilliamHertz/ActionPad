@@ -43,6 +43,7 @@
                         <li><button class="view-btn active" data-view="list-view" data-i18n="listView">List</button></li>
                         <li><button class="view-btn" data-view="kanban-view" data-i18n="kanbanView">Kanban</button></li>
                         <li><button class="view-btn" data-view="calendar-view" data-i18n="calendarView">Calendar</button></li>
+                         <li><button class="view-btn" data-view="chat-view" data-i18n="chatView">Team Chat</button></li>
                     </ul>
                 </nav>
                 <div class="projects-panel">
@@ -112,6 +113,16 @@
                         <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
                     </div>
                     <div id="calendar-grid"></div>
+                </div>
+
+                <div id="chat-view" class="view">
+                    <div class="chat-container">
+                        <div id="chat-messages"></div>
+                        <form id="add-chat-message-form">
+                            <input type="text" id="new-message-input" placeholder="Type a message and press Enter..." required autocomplete="off">
+                            <button type="submit">Send</button>
+                        </form>
+                    </div>
                 </div>
             </main>
         </div>
