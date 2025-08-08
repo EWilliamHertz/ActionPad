@@ -120,7 +120,6 @@ export const renderView = (viewId, tasks) => {
     }
 };
 
-// **MODIFIED**: Renders tasks with the new, cleaner Todoist-inspired style.
 const createTaskElement = (task) => {
     const item = document.createElement('div');
     item.className = `task-item ${task.status === 'done' ? 'done' : ''}`;
