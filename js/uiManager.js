@@ -89,7 +89,7 @@ export const renderProjectList = (projects, currentProjectId) => {
     const projectListEl = document.getElementById('project-list');
     if (!projectListEl) return;
     projectListEl.innerHTML = `<li class="project-item ${currentProjectId === 'all' ? 'active' : ''}" data-project-id="all">All Tasks</li>`;
-    projects.forEach(project => {
+    (projects || []).forEach(project => {
         const item = document.createElement('li');
         item.className = `project-item ${currentProjectId === project.id ? 'active' : ''}`;
         item.dataset.projectId = project.id;
@@ -120,44 +120,26 @@ export const renderView = (viewId, tasks) => {
     }
 };
 
+// **MODIFIED**: Renders tasks with the new, cleaner Todoist-inspired style.
 const createTaskElement = (task) => {
     const item = document.createElement('div');
     item.className = `task-item ${task.status === 'done' ? 'done' : ''}`;
     item.dataset.id = task.id;
-    item.draggable = true;
-    const priorityClass = `priority-${task.priority || 'low'}`;
+    
     item.innerHTML = `
-        <div class="task-item-main">
-            <input type="checkbox" class="task-checkbox" ${task.status === 'done' ? 'checked' : ''}>
-            <div class="task-content">
-                <div class="task-name">${task.name}</div>
-                <div class="task-details">
-                    ${task.dueDate ? `<span>📅 ${new Date(task.dueDate).toLocaleDateString()}</span>` : ''}
-                    <span class="priority-label"><span class="priority-dot ${priorityClass}"></span> ${task.priority}</span>
-                </div>
-            </div>
-            <div class="task-actions">
-                <button class="edit-task-btn">✏️</button>
-                <button class="delete-task-btn">🗑️</button>
+        <input type="checkbox" class="task-checkbox" ${task.status === 'done' ? 'checked' : ''}>
+        <div class="task-content">
+            <div class="task-name">${task.name}</div>
+            <div class="task-details">
+                ${task.dueDate ? `<span>📅 ${new Date(task.dueDate).toLocaleDateString()}</span>` : ''}
             </div>
         </div>
-        <div class="task-item-footer">
-            <div class="assignee-avatars"></div>
+        <div class="task-actions">
+            <button class="edit-task-btn">✏️</button>
+            <button class="delete-task-btn">🗑️</button>
         </div>
     `;
-    const assigneesContainer = item.querySelector('.assignee-avatars');
-    if (task.assignedTo && task.assignedTo.length > 0) {
-        task.assignedTo.forEach(uid => {
-            const user = appState.team.find(u => u.id === uid);
-            if (user) {
-                const avatar = document.createElement('div');
-                avatar.className = 'avatar';
-                avatar.textContent = user.nickname.charAt(0).toUpperCase();
-                avatar.title = user.nickname;
-                assigneesContainer.appendChild(avatar);
-            }
-        });
-    }
+
     item.querySelector('.task-checkbox').addEventListener('change', (e) => taskController.toggleTaskStatus(task.id, e.target.checked));
     item.querySelector('.delete-task-btn').addEventListener('click', () => taskController.deleteTask(task.id));
     item.querySelector('.edit-task-btn').addEventListener('click', () => openModal(taskModal, task));
