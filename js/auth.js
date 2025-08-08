@@ -1,7 +1,6 @@
 // FILE: js/auth.js
 import { auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-// **MODIFIED**: Imported sendVerificationEmail
 import { signIn, registerUser, signOut, sendVerificationEmail } from './firebase-service.js';
 import { initializeI18n } from './i18n.js';
 import { showToast } from './toast.js';
@@ -9,9 +8,6 @@ import { validateForm, setupLiveValidation } from './validation.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     onAuthStateChanged(auth, user => {
-        // **MODIFIED**: This now correctly handles the redirect logic.
-        // It only redirects if the user is fully authenticated (logged in AND verified)
-        // and is not already on the main app page.
         if (user && user.emailVerified) {
             if (!window.location.pathname.includes('index.html')) {
                 window.location.replace('index.html');
@@ -21,7 +17,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     initializeI18n();
 
-    // --- Login Form Logic ---
     const loginForm = document.getElementById('login-form');
     if (loginForm) {
         setupLiveValidation(loginForm);
@@ -40,10 +35,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const user = userCredential.user;
 
                 if (user.emailVerified) {
-                    // Success: User is verified, the onAuthStateChanged listener will handle the redirect.
                     noticeDiv.classList.add('hidden');
+                    window.location.href = 'index.html';
                 } else {
-                    // **NEW FLOW**: User exists but is not verified
                     noticeDiv.innerHTML = `
                         <p style="font-weight: 500; margin-bottom: 0.5rem;">Please verify your email.</p>
                         <p style="font-size: 0.9rem; margin-top: 0;">A verification link was sent to ${user.email}.</p>
@@ -66,7 +60,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     });
 
-                    // Sign out the user so they can't access the app without verification
                     await signOut();
                     submitButton.disabled = false;
                 }
@@ -74,12 +67,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error("Login failed:", error.code, error.message);
                 showToast(error.message, 'error');
                 submitButton.disabled = false;
-                noticeDiv.classList.add('hidden');
+                if(noticeDiv) noticeDiv.classList.add('hidden');
             }
         });
     }
 
-    // --- Registration Form Logic ---
     const registerForm = document.getElementById('register-form');
     if (registerForm) {
         setupLiveValidation(registerForm);
