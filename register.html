@@ -36,6 +36,16 @@
                 <div class="form-group">
                     <label for="register-password" data-i18n="password">Password</label>
                     <input type="password" id="register-password" minlength="6" required>
+                    <!-- Password Strength Indicator -->
+                    <div id="password-strength" class="password-strength-indicator">
+                        <div class="strength-bar"></div>
+                        <span class="strength-text"></span>
+                    </div>
+                    <div class="validation-error"></div>
+                </div>
+                <div class="form-group">
+                    <label for="register-confirm-password">Confirm Password</label>
+                    <input type="password" id="register-confirm-password" required>
                     <div class="validation-error"></div>
                 </div>
                 <hr>
@@ -53,7 +63,7 @@
                 </div>
                 <div class="form-group">
                     <label for="register-referralid" data-i18n="referralId">Referral ID (Optional)</label>
-                    <input type="number" id="register-referralid" placeholder="Enter ID to join an existing company">
+                    <input type="text" id="register-referralid" placeholder="Enter ID to join an existing company">
                     <div class="validation-error"></div>
                 </div>
 
