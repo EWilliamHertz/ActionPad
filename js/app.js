@@ -15,15 +15,12 @@ const appState = {
     currentView: 'list-view', currentProjectId: 'all', searchTerm: ''
 };
 
-// **THE FIX**: Wrap all logic in a DOMContentLoaded listener.
-// This ensures that the script does not run until the entire HTML page is loaded and ready.
 document.addEventListener('DOMContentLoaded', () => {
     onAuthStateChanged(auth, user => {
         if (user && user.emailVerified) {
             appState.user = user;
             initialize();
         } else {
-            // If user is not logged in or not verified, ensure they are on the login page.
             if (!window.location.pathname.includes('login.html') && !window.location.pathname.includes('register.html')) {
                 window.location.replace('login.html');
             }
@@ -31,10 +28,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-
-/**
- * Retries fetching a user profile to solve race conditions on registration.
- */
 const getUserProfileWithRetry = async (userId, retries = 3, delay = 1000) => {
     for (let i = 0; i < retries; i++) {
         const profileSnap = await getUserProfile(userId);
@@ -65,7 +58,6 @@ async function initialize() {
             uiManager.renderProjectList(appState.projects, appState.currentProjectId);
         });
         
-        // Listen to all tasks for the company initially
         listenToCompanyTasks(appState.profile.companyId, 'all', (tasks) => {
             appState.tasks = tasks;
             uiManager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
@@ -80,10 +72,11 @@ async function initialize() {
         document.getElementById('app-container').classList.remove('hidden');
         
     } catch (error) {
-        // **RESTORED**: The automatic sign-out is now re-enabled.
+        // **DEBUGGING CHANGE**: The signOut() call is temporarily disabled.
+        // This will prevent the page from refreshing so we can see the error.
         console.error("Initialization Failed:", error);
         showToast(error.message || 'Could not initialize the application.', 'error');
-        signOut(); 
+        // signOut(); 
     }
 }
 
