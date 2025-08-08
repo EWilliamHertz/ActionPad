@@ -2,7 +2,7 @@
 import { auth, db, rtdb, storage } from './firebase-config.js';
 import {
     createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as firebaseSignOut,
-    updatePassword, EmailAuthProvider, reauthenticateWithCredential
+    updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendEmailVerification
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 import {
     collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs,
@@ -27,25 +27,19 @@ export const signOut = () => {
     return firebaseSignOut(auth);
 };
 
-/**
- * **REVISED AND FIXED**
- * Handles user registration by first creating the user with Firebase Auth,
- * and only then creating the associated company and user documents in Firestore.
- * This resolves the permissions error during registration.
- */
 export const registerUser = async (userData) => {
     const { email, password, fullName, nickname, companyName, companyRole, referralId } = userData;
     
-    // Step 1: Create the user account with Firebase Auth. This is the crucial first step.
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
-    // Step 2: Now that the user is authenticated, perform the database writes.
+    // **NEW**: Send a verification email to the new user.
+    await sendEmailVerification(user);
+
     let companyId;
     let finalCompanyName = companyName;
 
     if (referralId) {
-        // If joining an existing company, find it using the referral ID.
         const q = query(companiesCollection, where("referralId", "==", Number(referralId)));
         const querySnapshot = await getDocs(q);
         if (!querySnapshot.empty) {
@@ -53,13 +47,9 @@ export const registerUser = async (userData) => {
             companyId = companyDoc.id;
             finalCompanyName = companyDoc.data().name;
         } else {
-            // Handle error: If the referral ID is invalid, registration should fail.
-            // For a production app, you might also delete the newly created auth user here.
             throw new Error("Invalid Referral ID. Company not found.");
         }
     } else {
-        // If creating a new company, add a new document to the 'companies' collection.
-        // This will now succeed because `request.auth` is not null.
         const newCompanyRef = await addDoc(companiesCollection, {
             name: companyName,
             referralId: Math.floor(100000 + Math.random() * 900000),
@@ -68,7 +58,6 @@ export const registerUser = async (userData) => {
         companyId = newCompanyRef.id;
     }
 
-    // Step 3: Create the user's profile document in the 'users' collection.
     await setDoc(doc(usersCollection, user.uid), {
         fullName,
         nickname,
@@ -76,7 +65,7 @@ export const registerUser = async (userData) => {
         companyRole,
         companyId,
         companyName: finalCompanyName,
-        online: false, // Set initial presence
+        online: false,
         last_changed: serverTimestamp()
     });
 
