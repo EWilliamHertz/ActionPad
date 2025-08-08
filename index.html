@@ -8,13 +8,27 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
+    <div id="toast-container"></div>
     <div id="app-container" class="hidden">
         <header>
-            <h1 data-i18n="appTitle">ActionPad</h1>
+            <div class="header-left">
+                <button id="hamburger-menu" class="hamburger-menu">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+                <h1 data-i18n="appTitle">ActionPad</h1>
+            </div>
+            <div class="header-center">
+                <input type="search" id="search-bar" placeholder="Search tasks...">
+            </div>
             <div class="header-controls">
                 <div id="user-info">
-                    <span id="user-nickname"></span>
-                    <span id="user-company"></span>
+                    <img id="user-avatar-header" src="https://placehold.co/40x40/E9ECEF/495057?text=A" alt="User Avatar" class="avatar-header">
+                    <div>
+                        <span id="user-nickname"></span>
+                        <span id="user-company"></span>
+                    </div>
                 </div>
                 <button id="share-invite-button" data-i18n="inviteTeam">Invite Team</button>
                 <button id="logout-button" data-i18n="logout">Logout</button>
@@ -22,7 +36,7 @@
         </header>
 
         <div class="main-layout">
-            <aside>
+            <aside id="sidebar">
                 <nav>
                     <h3 data-i18n="views">Views</h3>
                     <ul id="view-switcher">
@@ -31,11 +45,22 @@
                         <li><button class="view-btn" data-view="calendar-view" data-i18n="calendarView">Calendar</button></li>
                     </ul>
                 </nav>
+                <div class="projects-panel">
+                    <h3>Projects</h3>
+                    <ul id="project-list">
+                        <li class="project-item active" data-project-id="all">All Tasks</li>
+                    </ul>
+                    <form id="add-project-form">
+                        <input type="text" id="new-project-input" placeholder="Create new project..." required>
+                        <button type="submit">+</button>
+                    </form>
+                </div>
                 <div id="team-panel">
                     <h3>Team</h3>
-                    <ul id="team-list">
-                        <!-- Team members will be rendered here by uiManager.js -->
-                    </ul>
+                    <ul id="team-list"></ul>
+                </div>
+                <div class="sidebar-footer">
+                    <a href="settings.html" class="settings-link">Settings</a>
                 </div>
             </aside>
 
@@ -96,6 +121,16 @@
                 
                 <div class="modal-section">
                     <div class="form-row">
+                         <div class="form-group">
+                            <label for="edit-task-project">Project</label>
+                            <select id="edit-task-project" required></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-task-assignees">Assignees</label>
+                            <select id="edit-task-assignees" multiple></select>
+                        </div>
+                    </div>
+                     <div class="form-row">
                         <div class="form-group">
                             <label for="edit-task-status">Status</label>
                             <select id="edit-task-status">
@@ -118,12 +153,6 @@
                             <label for="edit-task-due-date">Due Date</label>
                             <input type="date" id="edit-task-due-date">
                         </div>
-                        <div class="form-group">
-                            <label for="edit-task-assignees">Assignees</label>
-                            <select id="edit-task-assignees" multiple>
-                                <!-- Assignees will be populated by uiManager.js -->
-                            </select>
-                        </div>
                     </div>
                 </div>
 
@@ -131,12 +160,20 @@
                     <label for="edit-task-description">Description</label>
                     <textarea id="edit-task-description" placeholder="Add a more detailed description..."></textarea>
                 </div>
+
+                <div class="modal-section">
+                    <label>Attachments</label>
+                    <div id="attachments-list"></div>
+                    <div class="attachment-upload">
+                        <input type="file" id="file-upload-input" class="hidden">
+                        <button type="button" id="file-upload-button">Upload File</button>
+                        <progress id="upload-progress" value="0" max="100" class="hidden"></progress>
+                    </div>
+                </div>
                 
                 <div class="modal-section">
                     <label>Subtasks</label>
-                    <div id="subtasks-list">
-                        <!-- Subtasks will be rendered here -->
-                    </div>
+                    <div id="subtasks-list"></div>
                     <form id="add-subtask-form">
                         <input type="text" id="new-subtask-input" placeholder="Add a new subtask and press Enter">
                     </form>
@@ -151,13 +188,14 @@
 
             <div class="modal-section" id="activity-feed">
                 <label>Activity & Comments</label>
-                <div id="comments-list">
-                    <!-- Comments and activity log will be rendered here -->
+                <div id="comments-list"></div>
+                <div class="comment-input-wrapper">
+                    <div id="mention-suggestions" class="hidden"></div>
+                    <form id="add-comment-form">
+                        <input type="text" id="new-comment-input" placeholder="Write a comment... use @ to mention" required autocomplete="off">
+                        <button type="submit">Post</button>
+                    </form>
                 </div>
-                <form id="add-comment-form">
-                    <input type="text" id="new-comment-input" placeholder="Write a comment..." required>
-                    <button type="submit">Post</button>
-                </form>
             </div>
         </div>
     </div>
