@@ -6,6 +6,33 @@ export const initTaskController = (state) => {
     appState = state;
 };
 
+/**
+ * **NEW**: Sets up the form for adding new projects.
+ */
+export const setupProjectForm = (state) => {
+    const form = document.getElementById('add-project-form');
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('new-project-input');
+        const projectName = input.value.trim();
+        if (projectName && state.profile) {
+            const projectData = {
+                name: projectName,
+                companyId: state.profile.companyId,
+            };
+            firebaseService.addProject(projectData)
+                .then(() => {
+                    input.value = '';
+                })
+                .catch(err => {
+                    console.error("Error adding project:", err);
+                    // Optionally show a toast notification on error
+                });
+        }
+    });
+};
+
+
 export const setupTaskForm = () => {
     document.getElementById('add-task-form').addEventListener('submit', (e) => {
         e.preventDefault();
@@ -19,6 +46,9 @@ export const setupTaskForm = () => {
 
 const handleAddTask = (text) => {
     const taskData = parseTaskInput(text);
+    // Ensure new tasks are associated with the current project or none if 'All Tasks' is selected
+    taskData.projectId = appState.currentProjectId === 'all' ? null : appState.currentProjectId;
+
     const author = { uid: appState.user.uid, nickname: appState.profile.nickname };
     firebaseService.addTask(taskData, appState.profile.companyId, author)
         .then((docRef) => {
@@ -39,7 +69,8 @@ export const handleEditTask = () => {
         dueDate: document.getElementById('edit-task-due-date').value,
         priority: document.getElementById('edit-task-priority').value,
         status: document.getElementById('edit-task-status').value,
-        assignedTo: assignees
+        assignedTo: assignees,
+        projectId: document.getElementById('edit-task-project').value
     };
     firebaseService.updateTask(taskId, taskData)
         .catch(err => console.error("Error updating task:", err));
@@ -56,6 +87,7 @@ export const updateTaskStatus = (taskId, newStatus) => {
 };
 
 export const deleteTask = (taskId) => {
+    // Using a simple confirm dialog for now. A custom modal would be better for UX.
     if (confirm("Are you sure you want to delete this task?")) {
         firebaseService.deleteTask(taskId)
             .catch(err => console.error("Error deleting task:", err));
