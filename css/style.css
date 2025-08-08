@@ -255,3 +255,96 @@ main { padding: 2rem; overflow-y: auto; }
     header { padding: 1rem; }
     main { padding: 1rem; }
 }
+
+.form-options {
+    display: flex;
+    justify-content: flex-end;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+.form-options a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+.form-options a:hover {
+    text-decoration: underline;
+}
+
+/* Password Strength Indicator */
+.password-strength-indicator {
+    margin-top: 8px;
+    height: 10px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.3s ease-in-out;
+}
+.strength-bar {
+    height: 6px;
+    width: 0%;
+    border-radius: 3px;
+    background-color: var(--border-color);
+    transition: width 0.3s, background-color 0.3s;
+}
+.strength-text {
+    font-size: 0.8rem;
+    color: var(--subtle-text-color);
+    font-weight: 500;
+}
+.password-strength-indicator.weak .strength-bar { width: 33%; background-color: var(--priority-high); }
+.password-strength-indicator.medium .strength-bar { width: 66%; background-color: var(--priority-medium); }
+.password-strength-indicator.strong .strength-bar { width: 100%; background-color: var(--priority-low); }
+
+/* Notice Box for Verification */
+.notice-box {
+    text-align: center;
+    background-color: var(--warning-bg);
+    padding: 1rem;
+    border-radius: 6px;
+    border: 1px solid var(--warning-border);
+    margin-bottom: 1rem;
+}
+.notice-box p {
+    margin: 0;
+}
+.notice-box p:first-of-type {
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+.notice-box p:last-of-type {
+    font-size: 0.9rem;
+}
+.notice-box button {
+    width: 100%;
+    padding: 0.5rem;
+    margin-top: 0.75rem;
+    cursor: pointer;
+    border: 1px solid var(--subtle-text-color);
+    border-radius: 4px;
+    background-color: white;
+    transition: background-color 0.2s;
+}
+.notice-box button:hover {
+    background-color: var(--background-color);
+}
+.notice-box button:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+/* Success Message Button */
+.success-button {
+    display: block;
+    text-align: center;
+    margin-top: 1.5rem;
+    text-decoration: none;
+    background-color: var(--primary-color);
+    color: white;
+    padding: 0.9rem;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+}
+.success-button:hover {
+    background-color: #357ABD;
+}
