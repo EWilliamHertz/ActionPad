@@ -28,7 +28,7 @@ onAuthStateChanged(auth, user => {
 });
 
 /**
- * **NEW**: Retries fetching a user profile to solve race conditions on registration.
+ * Retries fetching a user profile to solve race conditions on registration.
  */
 const getUserProfileWithRetry = async (userId, retries = 3, delay = 1000) => {
     for (let i = 0; i < retries; i++) {
@@ -75,9 +75,12 @@ async function initialize() {
         document.getElementById('app-container').classList.remove('hidden');
         
     } catch (error) {
+        // **DEBUGGING CHANGE**: The signOut() call is temporarily disabled.
+        // This will prevent the page from refreshing when an error occurs,
+        // so you can see the full error message in the developer console.
         console.error("Initialization Failed:", error);
         showToast(error.message || 'Could not initialize the application.', 'error');
-        signOut();
+        // signOut(); 
     }
 }
 
