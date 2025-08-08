@@ -8,7 +8,6 @@ import {
 import { initializeI18n } from './i18n.js';
 import * as uiManager from './uiManager.js';
 import * as taskController from './taskController.js';
-// **MODIFIED**: Import showToast to replace alert().
 import { showToast } from './toast.js';
 
 const appState = {
@@ -17,22 +16,20 @@ const appState = {
 };
 
 onAuthStateChanged(auth, user => {
-    if (user) {
-        // Don't initialize if the user hasn't verified their email.
-        if (!user.emailVerified) {
-            showToast('Please verify your email to continue.', 'error');
-            signOut();
-            return;
-        }
+    if (user && user.emailVerified) {
         appState.user = user;
         initialize();
     } else {
+        // If user is not logged in or not verified, ensure they are on the login page.
         if (!window.location.pathname.includes('login.html') && !window.location.pathname.includes('register.html')) {
             window.location.replace('login.html');
         }
     }
 });
 
+/**
+ * **NEW**: Retries fetching a user profile to solve race conditions on registration.
+ */
 const getUserProfileWithRetry = async (userId, retries = 3, delay = 1000) => {
     for (let i = 0; i < retries; i++) {
         const profileSnap = await getUserProfile(userId);
@@ -48,12 +45,10 @@ const getUserProfileWithRetry = async (userId, retries = 3, delay = 1000) => {
 async function initialize() {
     try {
         const profileSnap = await getUserProfileWithRetry(appState.user.uid);
-        
         appState.profile = { uid: appState.user.uid, ...profileSnap.data() };
         
         const companySnap = await getCompany(appState.profile.companyId);
         if (!companySnap.exists()) throw new Error("Company data not found.");
-        
         appState.company = {id: companySnap.id, ...companySnap.data()};
         
         taskController.initTaskController(appState);
@@ -65,6 +60,7 @@ async function initialize() {
             uiManager.renderProjectList(appState.projects, appState.currentProjectId);
         });
         
+        // Listen to all tasks for the company initially
         listenToCompanyTasks(appState.profile.companyId, 'all', (tasks) => {
             appState.tasks = tasks;
             uiManager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
@@ -80,7 +76,6 @@ async function initialize() {
         
     } catch (error) {
         console.error("Initialization Failed:", error);
-        // **MODIFIED**: Replaced alert() with a non-blocking toast notification.
         showToast(error.message || 'Could not initialize the application.', 'error');
         signOut();
     }
