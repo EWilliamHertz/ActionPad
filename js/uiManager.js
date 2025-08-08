@@ -1,3 +1,4 @@
+// FILE: js/uiManager.js
 import * as taskController from './taskController.js';
 import * as firebaseService from './firebase-service.js';
 
@@ -9,18 +10,22 @@ export const initUIManager = (state) => {
 };
 
 // --- Helper function to format timestamps ---
+function formatTimestamp(timestamp) {
+    if (!timestamp) return '';
+    const date = timestamp.toDate();
+    return date.toLocaleString([], { hour: '2-digit', minute: '2-digit' });
+}
+
 function formatLastSeen(timestamp) {
     if (!timestamp) return 'Offline';
     const now = new Date();
     const lastSeen = timestamp.toDate();
     const diffSeconds = Math.floor((now - lastSeen) / 1000);
-    const diffDays = Math.floor(diffSeconds / 86400);
 
-    if (diffSeconds < 60) return 'Last seen: just now';
-    if (diffSeconds < 3600) return `Last seen: ${Math.floor(diffSeconds / 60)}m ago`;
-    if (diffDays === 0) return 'Last seen: today';
-    if (diffDays === 1) return 'Last seen: yesterday';
-    return `Last seen: ${lastSeen.toLocaleDateString()}`;
+    if (diffSeconds < 60) return 'Just now';
+    if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m ago`;
+    if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h ago`;
+    return lastSeen.toLocaleDateString();
 }
 
 export const renderTeamList = (team) => {
@@ -28,17 +33,18 @@ export const renderTeamList = (team) => {
     if (!teamListEl) return;
     teamListEl.innerHTML = '';
     
-    team.sort((a, b) => (b.online || false) - (a.online || false));
+    team.sort((a, b) => (b.online === true ? 1 : -1) - (a.online === true ? 1 : -1) || a.nickname.localeCompare(b.nickname));
 
     team.forEach(user => {
         const userEl = document.createElement('li');
         userEl.className = 'team-member';
         const statusClass = user.online ? 'online' : 'offline';
         const statusText = user.online ? 'Online' : formatLastSeen(user.last_changed);
+        const avatarSrc = user.avatarURL || `https://placehold.co/36x36/E9ECEF/495057?text=${user.nickname.charAt(0).toUpperCase()}`;
 
         userEl.innerHTML = `
             <div class="team-member-avatar">
-                ${user.nickname.charAt(0).toUpperCase()}
+                <img src="${avatarSrc}" alt="${user.nickname}" class="avatar-img">
                 <span class="presence-dot ${statusClass}"></span>
             </div>
             <div class="team-member-info">
@@ -125,10 +131,11 @@ const createTaskElement = (task) => {
     item.className = `task-item ${task.status === 'done' ? 'done' : ''}`;
     item.dataset.id = task.id;
     
+    // The task name will be populated asynchronously
     item.innerHTML = `
         <input type="checkbox" class="task-checkbox" ${task.status === 'done' ? 'checked' : ''}>
         <div class="task-content">
-            <div class="task-name">${task.name}</div>
+            <div class="task-name">Loading...</div>
             <div class="task-details">
                 ${task.dueDate ? `<span>📅 ${new Date(task.dueDate).toLocaleDateString()}</span>` : ''}
             </div>
@@ -139,11 +146,16 @@ const createTaskElement = (task) => {
         </div>
     `;
 
+    // Asynchronously translate and update the task name
+    const taskNameEl = item.querySelector('.task-name');
+    renderTranslatedText(taskNameEl, task.name, task.language);
+
     item.querySelector('.task-checkbox').addEventListener('change', (e) => taskController.toggleTaskStatus(task.id, e.target.checked));
     item.querySelector('.delete-task-btn').addEventListener('click', () => taskController.deleteTask(task.id));
     item.querySelector('.edit-task-btn').addEventListener('click', () => openModal(taskModal, task));
     return item;
 };
+
 
 const renderListView = (tasks) => {
     if (!listView) return;
@@ -193,7 +205,7 @@ const renderCalendarView = (tasks) => {
         tasksForDay.forEach(task => {
             const taskEl = document.createElement('div');
             taskEl.className = 'calendar-task';
-            taskEl.textContent = task.name;
+            taskEl.textContent = task.name; // Translation could be added here too if needed
             taskEl.addEventListener('click', () => openModal(taskModal, task));
             tasksContainer.appendChild(taskEl);
         });
@@ -265,6 +277,7 @@ export const openModal = (modalElement, task = null) => {
         document.getElementById('edit-task-due-date').value = task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '';
         document.getElementById('edit-task-priority').value = task.priority || 'low';
         document.getElementById('edit-task-status').value = task.status || 'todo';
+        
         const assigneesSelect = document.getElementById('edit-task-assignees');
         assigneesSelect.innerHTML = '';
         appState.team.forEach(user => {
@@ -274,6 +287,18 @@ export const openModal = (modalElement, task = null) => {
             }
             assigneesSelect.appendChild(option);
         });
+
+        // FIXED: Populate the project dropdown
+        const projectSelect = document.getElementById('edit-task-project');
+        projectSelect.innerHTML = '';
+        appState.projects.forEach(project => {
+            const option = new Option(project.name, project.id);
+            if (task.projectId === project.id) {
+                option.selected = true;
+            }
+            projectSelect.appendChild(option);
+        });
+        
         renderSubtasks(task);
         if (activeCommentsListener) activeCommentsListener();
         activeCommentsListener = firebaseService.listenToTaskComments(task.id, (comments) => {
@@ -323,19 +348,23 @@ const renderComments = (comments) => {
     (comments || []).forEach(comment => {
         const item = document.createElement('div');
         const author = comment.author?.nickname || 'User';
-        const timestamp = comment.createdAt?.toDate().toLocaleString() || '...';
+        const timestamp = comment.createdAt ? formatTimestamp(comment.createdAt) : '';
+
         if (comment.type === 'comment') {
+            const avatarSrc = comment.author?.avatarURL || `https://placehold.co/32x32/E9ECEF/495057?text=${author.charAt(0).toUpperCase()}`;
             item.className = 'comment-item';
             item.innerHTML = `
-                <div class="avatar comment-avatar">${author.charAt(0).toUpperCase()}</div>
+                <img src="${avatarSrc}" alt="${author}" class="avatar comment-avatar">
                 <div class="comment-content">
                     <div class="comment-header">
                         <span class="comment-author">${author}</span>
                         <span class="comment-timestamp">${timestamp}</span>
                     </div>
-                    <div class="comment-body">${comment.text}</div>
+                    <div class="comment-body">Loading...</div>
                 </div>
             `;
+            const commentBodyEl = item.querySelector('.comment-body');
+            renderTranslatedText(commentBodyEl, comment.text, comment.language);
         } else {
             item.className = 'activity-item';
             item.innerHTML = `
@@ -348,6 +377,54 @@ const renderComments = (comments) => {
         commentsList.appendChild(item);
     });
 };
+
+// NEW: Render Chat Messages
+export const renderChatMessages = (messages, currentUserId) => {
+    const chatMessagesEl = document.getElementById('team-chat-messages');
+    if (!chatMessagesEl) return;
+    chatMessagesEl.innerHTML = '';
+    messages.forEach(msg => {
+        const item = document.createElement('div');
+        const isSelf = msg.author.uid === currentUserId;
+        item.className = `chat-message ${isSelf ? 'is-self' : ''}`;
+
+        const author = msg.author?.nickname || 'User';
+        const timestamp = msg.createdAt ? formatTimestamp(msg.createdAt) : '';
+        const avatarSrc = msg.author?.avatarURL || `https://placehold.co/32x32/E9ECEF/495057?text=${author.charAt(0).toUpperCase()}`;
+
+        item.innerHTML = `
+            <img src="${avatarSrc}" alt="${author}" class="avatar chat-avatar">
+            <div class="chat-message-content">
+                <div class="chat-message-header">
+                    <span class="chat-author">${author}</span>
+                    <span class="chat-timestamp">${timestamp}</span>
+                </div>
+                <div class="chat-text">${msg.text}</div>
+            </div>
+        `;
+        chatMessagesEl.appendChild(item);
+    });
+    // Scroll to the bottom
+    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+};
+
+
+// NEW: Asynchronously translate and render text
+async function renderTranslatedText(element, text, originalLanguage) {
+    const userLanguage = localStorage.getItem('actionPadLanguage') || 'en';
+    if (originalLanguage && originalLanguage !== userLanguage) {
+        try {
+            const translatedText = await firebaseService.translateText(text, userLanguage);
+            element.textContent = translatedText;
+            element.title = `Original: ${text}`; // Show original on hover
+        } catch (e) {
+            element.textContent = text; // Show original on error
+        }
+    } else {
+        element.textContent = text;
+    }
+}
+
 
 export const setupEventListeners = () => {
     const prevMonthBtn = document.getElementById('prev-month');
