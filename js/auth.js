@@ -109,13 +109,16 @@ async function handleRegistration(event) {
             <a href="login.html" class="success-button">Go to Login Page</a>
         `;
     } catch (error) {
-        // **THE FIX**: This line will now print the full Firebase error to the console,
-        // which includes the link to create the missing index.
+        // This will now log the full error from Firebase, including the index link
         console.error("Full Firebase Error:", error);
         
-        const message = error.code === 'auth/email-already-in-use'
-            ? 'This email address is already registered. Please try logging in.'
-            : error.message || 'An unknown error occurred.';
+        let message = error.message || 'An unknown error occurred.';
+        if (error.code === 'auth/email-already-in-use') {
+            message = 'This email address is already registered. Please try logging in.';
+        } else if (error.code === 'failed-precondition') {
+            message = 'A database index is required. Please check the developer console for a link to create it.';
+        }
+        
         showToast(message, 'error');
         submitButton.disabled = false;
         submitButton.textContent = 'Register & Join';
