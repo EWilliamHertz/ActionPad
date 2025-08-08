@@ -31,6 +31,12 @@
                         <li><button class="view-btn" data-view="calendar-view" data-i18n="calendarView">Calendar</button></li>
                     </ul>
                 </nav>
+                <div id="team-panel">
+                    <h3>Team</h3>
+                    <ul id="team-list">
+                        <!-- Team members will be rendered here by uiManager.js -->
+                    </ul>
+                </div>
             </aside>
 
             <main>
@@ -87,23 +93,72 @@
             <form id="edit-task-form">
                 <input type="hidden" id="edit-task-id">
                 <input type="text" id="edit-task-name" required>
-                <textarea id="edit-task-description" placeholder="Add a description..."></textarea>
-                <label for="edit-task-due-date">Due Date:</label>
-                <input type="date" id="edit-task-due-date">
-                <label for="edit-task-priority">Priority:</label>
-                <select id="edit-task-priority">
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                </select>
-                <label for="edit-task-status">Status:</label>
-                <select id="edit-task-status">
-                    <option value="todo">To Do</option>
-                    <option value="in-progress">In Progress</option>
-                    <option value="done">Done</option>
-                </select>
-                <button type="submit">Save Changes</button>
+                
+                <div class="modal-section">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-task-status">Status</label>
+                            <select id="edit-task-status">
+                                <option value="todo">To Do</option>
+                                <option value="in-progress">In Progress</option>
+                                <option value="done">Done</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-task-priority">Priority</label>
+                            <select id="edit-task-priority">
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-task-due-date">Due Date</label>
+                            <input type="date" id="edit-task-due-date">
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-task-assignees">Assignees</label>
+                            <select id="edit-task-assignees" multiple>
+                                <!-- Assignees will be populated by uiManager.js -->
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-section">
+                    <label for="edit-task-description">Description</label>
+                    <textarea id="edit-task-description" placeholder="Add a more detailed description..."></textarea>
+                </div>
+                
+                <div class="modal-section">
+                    <label>Subtasks</label>
+                    <div id="subtasks-list">
+                        <!-- Subtasks will be rendered here -->
+                    </div>
+                    <form id="add-subtask-form">
+                        <input type="text" id="new-subtask-input" placeholder="Add a new subtask and press Enter">
+                    </form>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="submit">Save Changes</button>
+                </div>
             </form>
+            
+            <hr>
+
+            <div class="modal-section" id="activity-feed">
+                <label>Activity & Comments</label>
+                <div id="comments-list">
+                    <!-- Comments and activity log will be rendered here -->
+                </div>
+                <form id="add-comment-form">
+                    <input type="text" id="new-comment-input" placeholder="Write a comment..." required>
+                    <button type="submit">Post</button>
+                </form>
+            </div>
         </div>
     </div>
 
