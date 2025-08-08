@@ -8,24 +8,25 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-
+    <div id="toast-container"></div>
     <div class="auth-page-container">
         <div class="auth-box">
             <h1 class="auth-header">ActionPad</h1>
             <h2 data-i18n="welcomeBack">Welcome Back!</h2>
             <p class="auth-sub-header" data-i18n="loginPrompt">Please sign in to continue.</p>
             
-            <form id="login-form" class="auth-form">
+            <form id="login-form" class="auth-form" novalidate>
                 <div class="form-group">
                     <label for="login-email" data-i18n="email">Email</label>
                     <input type="email" id="login-email" required>
+                    <div class="validation-error"></div>
                 </div>
                 <div class="form-group">
                     <label for="login-password" data-i18n="password">Password</label>
                     <input type="password" id="login-password" required>
+                    <div class="validation-error"></div>
                 </div>
                 <button type="submit" data-i18n="login">Login</button>
-                <p class="auth-error" id="login-error"></p>
             </form>
             
             <p class="auth-toggle">
@@ -34,7 +35,6 @@
             </p>
         </div>
     </div>
-
     <footer class="language-footer">
         <div class="language-switcher">
             <button class="lang-btn" data-lang="en">English</button>
@@ -42,7 +42,6 @@
             <button class="lang-btn" data-lang="zh">中文</button>
         </div>
     </footer>
-
     <script type="module" src="js/auth.js"></script>
 </body>
 </html>
