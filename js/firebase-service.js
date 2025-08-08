@@ -62,10 +62,7 @@ export const registerUser = async (userData) => {
         return user;
     } catch (error) {
         console.error("Error creating user profile in Firestore:", error);
-        // **THE FIX**: Re-throw the original error from Firebase.
-        // This will pass the detailed error message, including the index creation link,
-        // to the auth.js file to be logged in the console.
-        throw error;
+        throw error; // Re-throw the original error to be handled by the UI
     }
 };
 
