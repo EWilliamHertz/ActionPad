@@ -56,7 +56,6 @@ async function initialize() {
         listenToCompanyProjects(appState.profile.companyId, (projects) => {
             appState.projects = projects;
             uiManager.renderProjectList(appState.projects, appState.currentProjectId);
-            // If a project is selected, update its header with fresh data
             if (appState.currentProjectId !== 'all') {
                 const updatedProject = projects.find(p => p.id === appState.currentProjectId);
                 if (updatedProject) {
@@ -134,6 +133,9 @@ function setupUI() {
         }
     });
 
+    // **MODIFIED**: Use event delegation for project switching.
+    // This single listener on the parent list will handle clicks for all
+    // project items, including ones added later.
     document.getElementById('project-list').addEventListener('click', (e) => {
         if (e.target.matches('.project-item')) {
             const projectId = e.target.dataset.projectId;
