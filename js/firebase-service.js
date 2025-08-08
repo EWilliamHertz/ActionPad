@@ -19,7 +19,7 @@ const projectsCollection = collection(db, 'projects');
 
 export const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
 
-// **FIX**: This function is now properly exported.
+// **FIX**: This function is now properly exported for other files to use.
 export const sendVerificationEmail = (user) => {
     return firebaseSendEmailVerification(user);
 };
@@ -37,7 +37,7 @@ export const registerUser = async (userData) => {
     const { email, password, fullName, nickname, companyName, companyRole, referralId } = userData;
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-    await sendVerificationEmail(user);
+    await sendVerificationEmail(user); // Use the local (now exported) function
     try {
         let companyId;
         let finalCompanyName = companyName;
