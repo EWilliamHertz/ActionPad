@@ -8,6 +8,8 @@ import {
 import { initializeI18n } from './i18n.js';
 import * as uiManager from './uiManager.js';
 import * as taskController from './taskController.js';
+// **MODIFIED**: Import showToast to replace alert().
+import { showToast } from './toast.js';
 
 const appState = {
     user: null, profile: null, company: null, team: [], projects: [], tasks: [],
@@ -16,6 +18,12 @@ const appState = {
 
 onAuthStateChanged(auth, user => {
     if (user) {
+        // Don't initialize if the user hasn't verified their email.
+        if (!user.emailVerified) {
+            showToast('Please verify your email to continue.', 'error');
+            signOut();
+            return;
+        }
         appState.user = user;
         initialize();
     } else {
@@ -25,37 +33,28 @@ onAuthStateChanged(auth, user => {
     }
 });
 
-/**
- * **NEW**: Retries fetching a user profile to solve race conditions on registration.
- * @param {string} userId - The ID of the user to fetch.
- * @param {number} retries - The number of times to retry.
- * @param {number} delay - The delay in ms between retries.
- * @returns {Promise<DocumentSnapshot>}
- */
 const getUserProfileWithRetry = async (userId, retries = 3, delay = 1000) => {
     for (let i = 0; i < retries; i++) {
         const profileSnap = await getUserProfile(userId);
         if (profileSnap.exists()) {
             return profileSnap;
         }
-        // Wait before trying again
         await new Promise(res => setTimeout(res, delay));
     }
-    throw new Error("User profile not found after multiple retries.");
+    throw new Error("Your user profile could not be found. Please contact support.");
 };
 
 
 async function initialize() {
     try {
-        // **MODIFIED**: Use the new retry function to prevent race conditions.
         const profileSnap = await getUserProfileWithRetry(appState.user.uid);
         
         appState.profile = { uid: appState.user.uid, ...profileSnap.data() };
         
         const companySnap = await getCompany(appState.profile.companyId);
-        if (!companySnap.exists()) throw new Error("Company not found.");
+        if (!companySnap.exists()) throw new Error("Company data not found.");
         
-        appState.company = companySnap.data();
+        appState.company = {id: companySnap.id, ...companySnap.data()};
         
         taskController.initTaskController(appState);
         uiManager.initUIManager(appState);
@@ -63,11 +62,10 @@ async function initialize() {
         
         listenToCompanyProjects(appState.profile.companyId, (projects) => {
             appState.projects = projects;
-            // This function needs to be defined in uiManager.js
-            // uiManager.renderProjectList(appState.projects, appState.currentProjectId);
+            uiManager.renderProjectList(appState.projects, appState.currentProjectId);
         });
         
-        listenToCompanyTasks(appState.profile.companyId, appState.currentProjectId, (tasks) => {
+        listenToCompanyTasks(appState.profile.companyId, 'all', (tasks) => {
             appState.tasks = tasks;
             uiManager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
         });
@@ -82,15 +80,15 @@ async function initialize() {
         
     } catch (error) {
         console.error("Initialization Failed:", error);
-        alert("Could not initialize the application. Signing out.");
+        // **MODIFIED**: Replaced alert() with a non-blocking toast notification.
+        showToast(error.message || 'Could not initialize the application.', 'error');
         signOut();
     }
 }
 
 function setupUI() {
     initializeI18n();
-    // This function needs to be defined in uiManager.js
-    // uiManager.updateUserInfo(appState.profile);
+    uiManager.updateUserInfo(appState.profile, appState.company);
     
     document.getElementById('logout-button').addEventListener('click', signOut);
     
@@ -104,8 +102,7 @@ function setupUI() {
     
     document.getElementById('share-invite-button').addEventListener('click', () => {
         const inviteLink = `${window.location.origin}/register.html?ref=${appState.company.referralId}`;
-        // This function needs to be defined in uiManager.js
-        // uiManager.openInviteModal(inviteLink);
+        uiManager.openInviteModal(inviteLink);
     });
     
     document.getElementById('hamburger-menu').addEventListener('click', () => {
@@ -117,8 +114,7 @@ function setupUI() {
         uiManager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
     });
 
-    // These functions need to be defined in taskController.js
-    // taskController.setupProjectForm();
+    taskController.setupProjectForm(appState);
     taskController.setupTaskForm();
     
     uiManager.setupModals();
