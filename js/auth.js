@@ -15,7 +15,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     initializeI18n();
 
-    // --- Login Form Logic ---
     const loginForm = document.getElementById('login-form');
     if (loginForm) {
         setupLiveValidation(loginForm);
@@ -26,14 +25,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 await signIn(document.getElementById('login-email').value, document.getElementById('login-password').value);
                 window.location.href = 'index.html';
             } catch (error) {
-                // Log the specific error and show a user-friendly message
                 console.error("Login failed:", error.code, error.message);
                 showToast(error.message, 'error');
             }
         });
     }
 
-    // --- Registration Form Logic ---
     const registerForm = document.getElementById('register-form');
     if (registerForm) {
         setupLiveValidation(registerForm);
@@ -49,7 +46,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         registerForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            if (!validateForm(registerForm)) return;
+            const submitButton = registerForm.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.textContent = 'Registering...';
+
+            if (!validateForm(registerForm)) {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Register & Join';
+                return;
+            }
+            
             const userData = {
                 email: document.getElementById('register-email').value,
                 password: document.getElementById('register-password').value,
@@ -59,28 +65,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 companyRole: document.getElementById('register-companyrole').value,
                 referralId: document.getElementById('register-referralid').value || null
             };
+
             try {
                 await registerUser(userData);
-                // After successful registration and email sending
-                showToast('Registration successful! Please check your email to verify your account.', 'success');
-                // Redirect to login page to wait for verification
-                setTimeout(() => {
-                    window.location.href = 'login.html';
-                }, 3000);
+                // **MODIFIED**: Show a clear success message instead of just a toast.
+                const authBox = document.querySelector('.auth-box');
+                authBox.innerHTML = `
+                    <h2>Registration Successful!</h2>
+                    <p>We've sent a verification link to <strong>${userData.email}</strong>.</p>
+                    <p>Please check your inbox and click the link to activate your account before logging in.</p>
+                    <a href="login.html" class="button">Go to Login Page</a>
+                `;
 
             } catch (error) {
-                // **MODIFIED**: Added detailed console logging and user-friendly messages.
-                console.error("Registration failed with error code:", error.code);
-                console.error("Full error object:", error);
-                
-                let message = 'An unknown error occurred during registration.';
+                console.error("Registration failed:", error.code, error.message);
+                let message = error.message || 'An unknown error occurred.';
                 if (error.code === 'auth/email-already-in-use') {
                     message = 'This email address is already registered. Please try logging in.';
-                } else if (error.code) {
-                    message = error.message; // Use the default Firebase message
                 }
-                
                 showToast(message, 'error');
+                submitButton.disabled = false;
+                submitButton.textContent = 'Register & Join';
             }
         });
     }
