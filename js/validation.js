@@ -1,16 +1,18 @@
-/ FILE: js/validation.js
+// FILE: js/validation.js
 function showError(input, message) {
     const formGroup = input.parentElement;
     input.classList.add('invalid');
     const error = formGroup.querySelector('.validation-error');
     if (error) error.textContent = message;
 }
+
 function clearError(input) {
     const formGroup = input.parentElement;
     input.classList.remove('invalid');
     const error = formGroup.querySelector('.validation-error');
     if (error) error.textContent = '';
 }
+
 function validateEmail(input) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(input.value.trim())) {
@@ -19,6 +21,7 @@ function validateEmail(input) {
     }
     return true;
 }
+
 function validateRequired(input) {
     if (input.value.trim() === '') {
         showError(input, 'This field is required.');
@@ -26,6 +29,7 @@ function validateRequired(input) {
     }
     return true;
 }
+
 function validateLength(input, min) {
     if (input.value.length < min) {
         showError(input, `Password must be at least ${min} characters.`);
@@ -33,6 +37,7 @@ function validateLength(input, min) {
     }
     return true;
 }
+
 export function validateForm(form) {
     let isValid = true;
     const inputs = form.querySelectorAll('input[required]');
@@ -44,6 +49,7 @@ export function validateForm(form) {
     });
     return isValid;
 }
+
 export function setupLiveValidation(form) {
     form.addEventListener('input', (e) => {
         if (e.target.tagName === 'INPUT' && e.target.hasAttribute('required')) {
