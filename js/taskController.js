@@ -1,16 +1,11 @@
-// This module contains the "business logic" for tasks. It orchestrates
-// calls to the firebase service and handles data manipulation, like parsing text.
-
 import * as firebaseService from './firebase-service.js';
 
 let appState = null;
 
-// Initialize the controller with a reference to the main app's state
 export const initTaskController = (state) => {
     appState = state;
 };
 
-// --- Task Form Handling ---
 export const setupTaskForm = () => {
     document.getElementById('add-task-form').addEventListener('submit', (e) => {
         e.preventDefault();
@@ -24,21 +19,29 @@ export const setupTaskForm = () => {
 
 const handleAddTask = (text) => {
     const taskData = parseTaskInput(text);
-    firebaseService.addTask(taskData, appState.profile.companyId)
+    const author = { uid: appState.user.uid, nickname: appState.profile.nickname };
+    firebaseService.addTask(taskData, appState.profile.companyId, author)
+        .then((docRef) => {
+            const activityText = `${author.nickname} created this task.`;
+            firebaseService.logActivity(docRef.id, { text: activityText, author });
+        })
         .catch(err => console.error("Error adding task:", err));
 };
 
-// --- Task CRUD Operations ---
 export const handleEditTask = () => {
-    const id = document.getElementById('edit-task-id').value;
+    const taskId = document.getElementById('edit-task-id').value;
+    const selectedOptions = document.querySelectorAll('#edit-task-assignees option:checked');
+    const assignees = Array.from(selectedOptions).map(el => el.value);
+
     const taskData = {
         name: document.getElementById('edit-task-name').value,
         description: document.getElementById('edit-task-description').value,
         dueDate: document.getElementById('edit-task-due-date').value,
         priority: document.getElementById('edit-task-priority').value,
         status: document.getElementById('edit-task-status').value,
+        assignedTo: assignees
     };
-    firebaseService.updateTask(id, taskData)
+    firebaseService.updateTask(taskId, taskData)
         .catch(err => console.error("Error updating task:", err));
 };
 
@@ -53,20 +56,48 @@ export const updateTaskStatus = (taskId, newStatus) => {
 };
 
 export const deleteTask = (taskId) => {
-    // A non-blocking confirmation would be better, but this is simple.
     if (confirm("Are you sure you want to delete this task?")) {
         firebaseService.deleteTask(taskId)
             .catch(err => console.error("Error deleting task:", err));
     }
 };
 
-// --- Natural Language Parsing (Simple Implementation) ---
+export const addSubtask = (taskId, text) => {
+    const newSubtask = { text, isCompleted: false };
+    const task = appState.tasks.find(t => t.id === taskId);
+    const updatedSubtasks = [...(task.subtasks || []), newSubtask];
+    firebaseService.updateTask(taskId, { subtasks: updatedSubtasks });
+};
+
+export const toggleSubtask = (taskId, subtaskIndex, isCompleted) => {
+    const task = appState.tasks.find(t => t.id === taskId);
+    const updatedSubtasks = [...task.subtasks];
+    updatedSubtasks[subtaskIndex].isCompleted = isCompleted;
+    firebaseService.updateTask(taskId, { subtasks: updatedSubtasks });
+};
+
+export const deleteSubtask = (taskId, subtaskIndex) => {
+    const task = appState.tasks.find(t => t.id === taskId);
+    const updatedSubtasks = task.subtasks.filter((_, index) => index !== subtaskIndex);
+    firebaseService.updateTask(taskId, { subtasks: updatedSubtasks });
+};
+
+export const addComment = (taskId, text) => {
+    const commentData = {
+        text,
+        author: {
+            uid: appState.user.uid,
+            nickname: appState.profile.nickname
+        }
+    };
+    firebaseService.addComment(taskId, commentData);
+};
+
 const parseTaskInput = (text) => {
     let taskName = text;
-    let priority = 'medium'; // Default priority
+    let priority = 'medium';
     let dueDate = null;
 
-    // Regex to find and remove priority keywords
     const priorityRegex = /\b(high|medium|low)\s?priority\b/i;
     const priorityMatch = text.match(priorityRegex);
     if (priorityMatch) {
@@ -74,7 +105,6 @@ const parseTaskInput = (text) => {
         taskName = taskName.replace(priorityRegex, '').trim();
     }
 
-    // Simple date parsing
     const today = new Date();
     if (/\btomorrow\b/i.test(taskName)) {
         dueDate = new Date();
