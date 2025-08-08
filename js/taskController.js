@@ -1,4 +1,6 @@
+// FILE: js/taskController.js
 import * as firebaseService from './firebase-service.js';
+import { showToast } from './toast.js';
 
 let appState = null;
 
@@ -6,9 +8,6 @@ export const initTaskController = (state) => {
     appState = state;
 };
 
-/**
- * **NEW**: Sets up the form for adding new projects.
- */
 export const setupProjectForm = (state) => {
     const form = document.getElementById('add-project-form');
     form.addEventListener('submit', (e) => {
@@ -23,10 +22,11 @@ export const setupProjectForm = (state) => {
             firebaseService.addProject(projectData)
                 .then(() => {
                     input.value = '';
+                    showToast('Project created!', 'success');
                 })
                 .catch(err => {
                     console.error("Error adding project:", err);
-                    // Optionally show a toast notification on error
+                    showToast('Could not create project.', 'error');
                 });
         }
     });
@@ -46,7 +46,6 @@ export const setupTaskForm = () => {
 
 const handleAddTask = (text) => {
     const taskData = parseTaskInput(text);
-    // Ensure new tasks are associated with the current project or none if 'All Tasks' is selected
     taskData.projectId = appState.currentProjectId === 'all' ? null : appState.currentProjectId;
 
     const author = { uid: appState.user.uid, nickname: appState.profile.nickname };
@@ -54,8 +53,12 @@ const handleAddTask = (text) => {
         .then((docRef) => {
             const activityText = `${author.nickname} created this task.`;
             firebaseService.logActivity(docRef.id, { text: activityText, author });
+            showToast('Task added!', 'success');
         })
-        .catch(err => console.error("Error adding task:", err));
+        .catch(err => {
+            console.error("Error adding task:", err)
+            showToast('Failed to add task.', 'error');
+        });
 };
 
 export const handleEditTask = () => {
@@ -73,7 +76,11 @@ export const handleEditTask = () => {
         projectId: document.getElementById('edit-task-project').value
     };
     firebaseService.updateTask(taskId, taskData)
-        .catch(err => console.error("Error updating task:", err));
+        .then(() => showToast('Task updated!', 'success'))
+        .catch(err => {
+            console.error("Error updating task:", err)
+            showToast('Failed to update task.', 'error');
+        });
 };
 
 export const toggleTaskStatus = (taskId, isDone) => {
@@ -87,10 +94,13 @@ export const updateTaskStatus = (taskId, newStatus) => {
 };
 
 export const deleteTask = (taskId) => {
-    // Using a simple confirm dialog for now. A custom modal would be better for UX.
     if (confirm("Are you sure you want to delete this task?")) {
         firebaseService.deleteTask(taskId)
-            .catch(err => console.error("Error deleting task:", err));
+            .then(() => showToast('Task deleted.', 'success'))
+            .catch(err => {
+                console.error("Error deleting task:", err)
+                showToast('Failed to delete task.', 'error');
+            });
     }
 };
 
@@ -119,7 +129,8 @@ export const addComment = (taskId, text) => {
         text,
         author: {
             uid: appState.user.uid,
-            nickname: appState.profile.nickname
+            nickname: appState.profile.nickname,
+            avatarURL: appState.profile.avatarURL || null
         }
     };
     firebaseService.addComment(taskId, commentData);
