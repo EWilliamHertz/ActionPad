@@ -16,7 +16,17 @@ const companiesCollection = collection(db, 'companies');
 const tasksCollection = collection(db, 'tasks');
 const projectsCollection = collection(db, 'projects');
 
-export const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
+/**
+ * **MODIFIED**: Signs in a user but requires their email to be verified.
+ */
+export const signIn = async (email, password) => {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    if (!userCredential.user.emailVerified) {
+        await firebaseSignOut(auth); // Sign out the unverified user
+        throw new Error("Please verify your email before logging in.");
+    }
+    return userCredential;
+};
 
 export const signOut = () => {
     const user = auth.currentUser;
@@ -33,7 +43,7 @@ export const registerUser = async (userData) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
-    // **NEW**: Send a verification email to the new user.
+    // Send a verification email to the new user.
     await sendEmailVerification(user);
 
     let companyId;
