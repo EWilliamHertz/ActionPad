@@ -2,7 +2,8 @@
 import { auth, db, rtdb, storage } from './firebase-config.js';
 import {
     createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as firebaseSignOut,
-    updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendEmailVerification
+    updatePassword, EmailAuthProvider, reauthenticateWithCredential, 
+    sendEmailVerification as firebaseSendEmailVerification
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 import {
     collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs,
@@ -18,6 +19,11 @@ const projectsCollection = collection(db, 'projects');
 
 export const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
 
+// **FIX**: This function is now properly exported.
+export const sendVerificationEmail = (user) => {
+    return firebaseSendEmailVerification(user);
+};
+
 export const signOut = () => {
     const user = auth.currentUser;
     if (user) {
@@ -31,7 +37,7 @@ export const registerUser = async (userData) => {
     const { email, password, fullName, nickname, companyName, companyRole, referralId } = userData;
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-    await sendEmailVerification(user);
+    await sendVerificationEmail(user);
     try {
         let companyId;
         let finalCompanyName = companyName;
@@ -76,7 +82,6 @@ export const updateUserPassword = async (currentPassword, newPassword) => {
     await reauthenticateWithCredential(user, credential);
     await updatePassword(user, newPassword);
 };
-
 export const addProject = (projectData) => addDoc(projectsCollection, { ...projectData, createdAt: serverTimestamp() });
 export const updateProject = (projectId, data) => updateDoc(doc(db, 'projects', projectId), data);
 export const uploadProjectLogo = async (projectId, file) => {
@@ -92,7 +97,6 @@ export const listenToCompanyProjects = (companyId, callback) => {
         callback(projects);
     });
 };
-
 export const addTask = (taskData, companyId, author) => addDoc(tasksCollection, { ...taskData, companyId, author: { uid: author.uid, nickname: author.nickname }, assignedTo: [], subtasks: [], attachments: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
 export const updateTask = (taskId, updatedData) => updateDoc(doc(tasksCollection, taskId), { ...updatedData, updatedAt: serverTimestamp() });
 export const deleteTask = (taskId) => deleteDoc(doc(tasksCollection, taskId));
