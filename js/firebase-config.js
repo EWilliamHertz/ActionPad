@@ -1,9 +1,7 @@
-// This file configures the connection to your Firebase project.
-// Replace the values with your project's specific configuration keys.
-
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { getDatabase } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -13,14 +11,16 @@ const firebaseConfig = {
   storageBucket: "actionpad-7eeb6.appspot.com",
   messagingSenderId: "817253830942",
   appId: "1:817253830942:web:2148ff924d17044330f90f",
-  measurementId: "G-VJ7P8K0LM0"
+  // IMPORTANT: Add your Realtime Database URL here for the presence system
+  databaseURL: "https://actionpad-7eeb6-default-rtdb.europe-west1.firebasedatabase.app",
 };
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize and export Firebase services to be used by other modules
+// Initialize and export Firebase services
 const auth = getAuth(app);
 const db = getFirestore(app);
+const rtdb = getDatabase(app); // Realtime Database for presence
 
-export { auth, db };
+export { auth, db, rtdb };
