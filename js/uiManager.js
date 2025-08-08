@@ -14,9 +14,6 @@ const taskModal = document.getElementById('task-modal');
 const inviteModal = document.getElementById('invite-modal');
 let currentDate = new Date();
 
-/**
- * **NEW**: Updates the user's info in the header.
- */
 export const updateUserInfo = (profile, company) => {
     if (profile) {
         document.getElementById('user-nickname').textContent = profile.nickname;
@@ -32,12 +29,9 @@ export const updateUserInfo = (profile, company) => {
     }
 };
 
-/**
- * **NEW**: Renders the list of projects in the sidebar.
- */
 export const renderProjectList = (projects, currentProjectId) => {
     const projectListEl = document.getElementById('project-list');
-    // Keep the "All Tasks" item
+    if (!projectListEl) return;
     projectListEl.innerHTML = `<li class="project-item ${currentProjectId === 'all' ? 'active' : ''}" data-project-id="all">All Tasks</li>`;
     projects.forEach(project => {
         const item = document.createElement('li');
@@ -48,20 +42,19 @@ export const renderProjectList = (projects, currentProjectId) => {
     });
 };
 
-/**
- * **NEW**: Opens the invite modal with the company's referral link.
- */
 export const openInviteModal = (inviteLink) => {
-    document.getElementById('invite-link-input').value = inviteLink;
-    inviteModal.classList.remove('hidden');
+    if (inviteModal) {
+        document.getElementById('invite-link-input').value = inviteLink;
+        inviteModal.classList.remove('hidden');
+    }
 };
 
 
 export const switchView = (viewId) => {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    document.getElementById(viewId).classList.add('active');
+    document.getElementById(viewId)?.classList.add('active');
     document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
-    document.querySelector(`.view-btn[data-view="${viewId}"]`).classList.add('active');
+    document.querySelector(`.view-btn[data-view="${viewId}"]`)?.classList.add('active');
 };
 
 export const renderView = (viewId, tasks) => {
@@ -133,6 +126,7 @@ const createTaskElement = (task) => {
 };
 
 const renderListView = (tasks) => {
+    if (!listView) return;
     listView.innerHTML = '';
     const taskList = document.createElement('div');
     taskList.className = 'task-list';
@@ -150,7 +144,9 @@ const renderKanbanView = (tasks) => {
         'in-progress': document.getElementById('kanban-in-progress'),
         done: document.getElementById('kanban-done'),
     };
-    Object.values(columns).forEach(col => col.innerHTML = '');
+    Object.values(columns).forEach(col => {
+        if (col) col.innerHTML = '';
+    });
     tasks.forEach(task => {
         const status = task.status || 'todo';
         if(columns[status]) {
@@ -161,6 +157,7 @@ const renderKanbanView = (tasks) => {
 
 const renderCalendarView = (tasks) => {
     const grid = document.getElementById('calendar-grid');
+    if (!grid) return;
     grid.innerHTML = '';
     document.getElementById('calendar-month-year').textContent = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
@@ -195,6 +192,7 @@ const renderCalendarView = (tasks) => {
 
 export const renderTeamList = (team) => {
     const teamListEl = document.getElementById('team-list');
+    if (!teamListEl) return;
     teamListEl.innerHTML = '';
     team.forEach(user => {
         const userEl = document.createElement('li');
@@ -207,52 +205,72 @@ export const renderTeamList = (team) => {
     });
 };
 
+/**
+ * **MODIFIED**: This function is now "defensive". It checks if an element
+ * exists before adding a listener, preventing the app from crashing.
+ */
 export const setupModals = () => {
     document.querySelectorAll('.modal-overlay').forEach(modal => {
-        modal.addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal-overlay') || e.target.classList.contains('modal-close')) {
-                closeModal(modal);
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target.classList.contains('modal-overlay') || e.target.classList.contains('modal-close')) {
+                    closeModal(modal);
+                }
+            });
+        }
+    });
+
+    const editTaskForm = document.getElementById('edit-task-form');
+    if (editTaskForm) {
+        editTaskForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            taskController.handleEditTask();
+            closeModal(taskModal);
+        });
+    }
+    
+    const copyInviteBtn = document.getElementById('copy-invite-link-button');
+    if (copyInviteBtn) {
+        copyInviteBtn.addEventListener('click', () => {
+            const linkInput = document.getElementById('invite-link-input');
+            linkInput.select();
+            document.execCommand('copy');
+            const successMsg = document.getElementById('copy-success-msg');
+            successMsg.classList.remove('hidden');
+            setTimeout(() => successMsg.classList.add('hidden'), 2000);
+        });
+    }
+
+    const addSubtaskForm = document.getElementById('add-subtask-form');
+    if (addSubtaskForm) {
+        addSubtaskForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const taskId = document.getElementById('edit-task-id').value;
+            const input = document.getElementById('new-subtask-input');
+            if (input.value.trim()) {
+                taskController.addSubtask(taskId, input.value.trim());
+                input.value = '';
             }
         });
-    });
+    }
 
-    document.getElementById('edit-task-form').addEventListener('submit', (e) => {
-        e.preventDefault();
-        taskController.handleEditTask();
-        closeModal(taskModal);
-    });
-    
-    document.getElementById('copy-invite-link-button').addEventListener('click', () => {
-        const linkInput = document.getElementById('invite-link-input');
-        linkInput.select();
-        document.execCommand('copy');
-        const successMsg = document.getElementById('copy-success-msg');
-        successMsg.classList.remove('hidden');
-        setTimeout(() => successMsg.classList.add('hidden'), 2000);
-    });
-
-    document.getElementById('add-subtask-form').addEventListener('submit', (e) => {
-        e.preventDefault();
-        const taskId = document.getElementById('edit-task-id').value;
-        const input = document.getElementById('new-subtask-input');
-        if (input.value.trim()) {
-            taskController.addSubtask(taskId, input.value.trim());
-            input.value = '';
-        }
-    });
-
-    document.getElementById('add-comment-form').addEventListener('submit', (e) => {
-        e.preventDefault();
-        const taskId = document.getElementById('edit-task-id').value;
-        const input = document.getElementById('new-comment-input');
-        if (input.value.trim()) {
-            taskController.addComment(taskId, input.value.trim());
-            input.value = '';
-        }
-    });
+    const addCommentForm = document.getElementById('add-comment-form');
+    if (addCommentForm) {
+        addCommentForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const taskId = document.getElementById('edit-task-id').value;
+            const input = document.getElementById('new-comment-input');
+            if (input.value.trim()) {
+                taskController.addComment(taskId, input.value.trim());
+                input.value = '';
+            }
+        });
+    }
 };
 
 export const openModal = (modalElement, task = null) => {
+    if (!modalElement) return;
+
     if (modalElement.id === 'task-modal' && task) {
         document.getElementById('edit-task-id').value = task.id;
         document.getElementById('edit-task-name').value = task.name;
@@ -273,7 +291,7 @@ export const openModal = (modalElement, task = null) => {
 
         renderSubtasks(task);
         
-        if (activeCommentsListener) activeCommentsListener(); // Unsubscribe from previous listener
+        if (activeCommentsListener) activeCommentsListener();
         activeCommentsListener = firebaseService.listenToTaskComments(task.id, (comments) => {
             renderComments(comments);
         });
@@ -282,8 +300,9 @@ export const openModal = (modalElement, task = null) => {
 };
 
 export const closeModal = (modalElement) => {
+    if (!modalElement) return;
     if (modalElement.id === 'task-modal' && activeCommentsListener) {
-        activeCommentsListener(); // Unsubscribe from comments listener
+        activeCommentsListener();
         activeCommentsListener = null;
     }
     modalElement.classList.add('hidden');
@@ -291,6 +310,7 @@ export const closeModal = (modalElement) => {
 
 const renderSubtasks = (task) => {
     const subtasksList = document.getElementById('subtasks-list');
+    if (!subtasksList) return;
     subtasksList.innerHTML = '';
     if (task.subtasks && task.subtasks.length > 0) {
         task.subtasks.forEach((subtask, index) => {
@@ -306,7 +326,7 @@ const renderSubtasks = (task) => {
             });
             item.querySelector('button').addEventListener('click', () => {
                 taskController.deleteSubtask(task.id, index);
-});
+            });
             subtasksList.appendChild(item);
         });
     }
@@ -314,6 +334,7 @@ const renderSubtasks = (task) => {
 
 const renderComments = (comments) => {
     const commentsList = document.getElementById('comments-list');
+    if (!commentsList) return;
     commentsList.innerHTML = '';
     comments.forEach(comment => {
         const item = document.createElement('div');
@@ -346,15 +367,23 @@ const renderComments = (comments) => {
 };
 
 export const setupEventListeners = () => {
-    document.getElementById('prev-month').addEventListener('click', () => {
-        currentDate.setMonth(currentDate.getMonth() - 1);
-        renderCalendarView(appState.tasks);
-    });
-    document.getElementById('next-month').addEventListener('click', () => {
-        currentDate.setMonth(currentDate.getMonth() + 1);
-        renderCalendarView(appState.tasks);
-    });
+    const prevMonthBtn = document.getElementById('prev-month');
+    if (prevMonthBtn) {
+        prevMonthBtn.addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            renderCalendarView(appState.tasks);
+        });
+    }
 
+    const nextMonthBtn = document.getElementById('next-month');
+    if (nextMonthBtn) {
+        nextMonthBtn.addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            renderCalendarView(appState.tasks);
+        });
+    }
+
+    if (!kanbanView) return;
     let draggedItem = null;
     kanbanView.addEventListener('dragstart', (e) => {
         if (e.target.classList.contains('task-item')) {
