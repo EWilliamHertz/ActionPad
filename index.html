@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ActionPad</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -82,7 +82,29 @@
     </div>
 
     <div id="task-modal" class="modal-overlay hidden">
-        <!-- Modal content is the same as before -->
+        <div class="modal-content">
+            <button class="modal-close">&times;</button>
+            <form id="edit-task-form">
+                <input type="hidden" id="edit-task-id">
+                <input type="text" id="edit-task-name" required>
+                <textarea id="edit-task-description" placeholder="Add a description..."></textarea>
+                <label for="edit-task-due-date">Due Date:</label>
+                <input type="date" id="edit-task-due-date">
+                <label for="edit-task-priority">Priority:</label>
+                <select id="edit-task-priority">
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                </select>
+                <label for="edit-task-status">Status:</label>
+                <select id="edit-task-status">
+                    <option value="todo">To Do</option>
+                    <option value="in-progress">In Progress</option>
+                    <option value="done">Done</option>
+                </select>
+                <button type="submit">Save Changes</button>
+            </form>
+        </div>
     </div>
 
     <div id="invite-modal" class="modal-overlay hidden">
