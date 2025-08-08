@@ -9,9 +9,13 @@ import { validateForm, setupLiveValidation } from './validation.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     onAuthStateChanged(auth, user => {
-        // Redirect only if user is fully authenticated (logged in AND verified) and not on the main page
-        if (user && user.emailVerified && !window.location.pathname.includes('index.html')) {
-            window.location.replace('index.html');
+        // **MODIFIED**: This now correctly handles the redirect logic.
+        // It only redirects if the user is fully authenticated (logged in AND verified)
+        // and is not already on the main app page.
+        if (user && user.emailVerified) {
+            if (!window.location.pathname.includes('index.html')) {
+                window.location.replace('index.html');
+            }
         }
     });
 
@@ -36,25 +40,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 const user = userCredential.user;
 
                 if (user.emailVerified) {
-                    // Success: User is verified, proceed to app
+                    // Success: User is verified, the onAuthStateChanged listener will handle the redirect.
                     noticeDiv.classList.add('hidden');
-                    window.location.href = 'index.html';
                 } else {
                     // **NEW FLOW**: User exists but is not verified
                     noticeDiv.innerHTML = `
                         <p style="font-weight: 500; margin-bottom: 0.5rem;">Please verify your email.</p>
                         <p style="font-size: 0.9rem; margin-top: 0;">A verification link was sent to ${user.email}.</p>
-                        <button id="resend-verification-btn" style="width: 100%; padding: 0.5rem; margin-top: 0.5rem;">Resend Verification Email</button>
+                        <button id="resend-verification-btn" style="width: 100%; padding: 0.5rem; margin-top: 0.5rem; cursor: pointer; border: 1px solid; border-radius: 4px;">Resend Verification Email</button>
                     `;
                     noticeDiv.classList.remove('hidden');
 
                     document.getElementById('resend-verification-btn').addEventListener('click', async () => {
+                        const resendButton = document.getElementById('resend-verification-btn');
+                        resendButton.disabled = true;
+                        resendButton.textContent = 'Sending...';
                         try {
                             await sendVerificationEmail(user);
                             showToast('A new verification email has been sent.', 'success');
-                            document.getElementById('resend-verification-btn').disabled = true;
+                            resendButton.textContent = 'Sent!';
                         } catch (err) {
                             showToast('Failed to send email. Please try again later.', 'error');
+                            resendButton.disabled = false;
+                            resendButton.textContent = 'Resend Verification Email';
                         }
                     });
 
