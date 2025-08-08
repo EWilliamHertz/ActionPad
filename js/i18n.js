@@ -1,3 +1,6 @@
+// This module handles internationalization (i18n) for the application.
+// It stores translations and provides a function to switch the language of the UI.
+
 const translations = {
     en: {
         loginTitle: "Login - ActionPad",
@@ -112,6 +115,7 @@ const translations = {
     }
 };
 
+// Finds all elements with a `data-i18n` attribute and sets their text content.
 const setLanguage = (language) => {
     document.querySelectorAll('[data-i18n]').forEach(element => {
         const key = element.getAttribute('data-i18n');
@@ -122,19 +126,22 @@ const setLanguage = (language) => {
     document.documentElement.lang = language;
     localStorage.setItem('actionPadLanguage', language);
 
-    // Update active button
+    // Update the active state of the language buttons.
     document.querySelectorAll('.lang-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.lang === language);
     });
 };
 
+// Initializes the language switcher and sets the initial language.
 export const initializeI18n = () => {
     const languageSwitcher = document.querySelector('.language-switcher');
-    languageSwitcher.addEventListener('click', (e) => {
-        if (e.target.matches('.lang-btn')) {
-            setLanguage(e.target.dataset.lang);
-        }
-    });
+    if (languageSwitcher) {
+        languageSwitcher.addEventListener('click', (e) => {
+            if (e.target.matches('.lang-btn')) {
+                setLanguage(e.target.dataset.lang);
+            }
+        });
+    }
 
     const savedLanguage = localStorage.getItem('actionPadLanguage') || 'en';
     setLanguage(savedLanguage);
