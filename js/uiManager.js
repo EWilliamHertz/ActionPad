@@ -1,18 +1,18 @@
-// This module is responsible for all direct DOM manipulation in the main application (index.html).
-// It renders views, tasks, and modals, keeping the logic separate from other modules.
-
 import * as taskController from './taskController.js';
+import * as firebaseService from './firebase-service.js';
 
-// --- DOM Element References ---
+let appState = null;
+let activeCommentsListener = null;
+
+export const initUIManager = (state) => {
+    appState = state;
+};
+
 const listView = document.getElementById('list-view');
 const kanbanView = document.getElementById('kanban-view');
-const calendarView = document.getElementById('calendar-view');
 const taskModal = document.getElementById('task-modal');
-const inviteModal = document.getElementById('invite-modal');
+let currentDate = new Date();
 
-let currentDate = new Date(); // State for the calendar view
-
-// --- Main View Rendering ---
 export const switchView = (viewId) => {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById(viewId).classList.add('active');
@@ -34,7 +34,6 @@ export const renderView = (viewId, tasks) => {
     }
 };
 
-// --- Task Element Creation ---
 const createTaskElement = (task) => {
     const item = document.createElement('div');
     item.className = `task-item ${task.status === 'done' ? 'done' : ''}`;
@@ -43,7 +42,9 @@ const createTaskElement = (task) => {
 
     const priorityClass = `priority-${task.priority || 'low'}`;
 
-    item.innerHTML = `
+    const mainContent = document.createElement('div');
+    mainContent.className = 'task-item-main';
+    mainContent.innerHTML = `
         <input type="checkbox" class="task-checkbox" ${task.status === 'done' ? 'checked' : ''}>
         <div class="task-content">
             <div class="task-name">${task.name}</div>
@@ -57,8 +58,29 @@ const createTaskElement = (task) => {
             <button class="delete-task-btn">🗑️</button>
         </div>
     `;
+    item.appendChild(mainContent);
 
-    // --- Event Listeners for Task Actions ---
+    const footer = document.createElement('div');
+    footer.className = 'task-item-footer';
+    const assigneesContainer = document.createElement('div');
+    assigneesContainer.className = 'assignee-avatars';
+    
+    if (task.assignedTo && task.assignedTo.length > 0) {
+        task.assignedTo.forEach(uid => {
+            const user = appState.team.find(u => u.id === uid);
+            if (user) {
+                const avatar = document.createElement('div');
+                avatar.className = 'avatar';
+                avatar.textContent = user.nickname.charAt(0).toUpperCase();
+                avatar.title = user.nickname;
+                assigneesContainer.appendChild(avatar);
+            }
+        });
+    }
+    
+    footer.appendChild(assigneesContainer);
+    item.appendChild(footer);
+
     item.querySelector('.task-checkbox').addEventListener('change', (e) => taskController.toggleTaskStatus(task.id, e.target.checked));
     item.querySelector('.delete-task-btn').addEventListener('click', () => taskController.deleteTask(task.id));
     item.querySelector('.edit-task-btn').addEventListener('click', () => openModal(taskModal, task));
@@ -66,7 +88,6 @@ const createTaskElement = (task) => {
     return item;
 };
 
-// --- Specific View Renderers ---
 const renderListView = (tasks) => {
     listView.innerHTML = '';
     const taskList = document.createElement('div');
@@ -128,9 +149,21 @@ const renderCalendarView = (tasks) => {
     }
 };
 
-// --- Modal Handling ---
+export const renderTeamList = (team) => {
+    const teamListEl = document.getElementById('team-list');
+    teamListEl.innerHTML = '';
+    team.forEach(user => {
+        const userEl = document.createElement('li');
+        userEl.className = 'team-member';
+        userEl.innerHTML = `
+            <span class="presence-dot ${user.online ? 'online' : 'offline'}"></span>
+            <span>${user.nickname}</span>
+        `;
+        teamListEl.appendChild(userEl);
+    });
+};
+
 export const setupModals = () => {
-    // Generic close logic for all modals
     document.querySelectorAll('.modal-overlay').forEach(modal => {
         modal.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-overlay') || e.target.classList.contains('modal-close')) {
@@ -139,21 +172,39 @@ export const setupModals = () => {
         });
     });
 
-    // Specific logic for the task edit form
     document.getElementById('edit-task-form').addEventListener('submit', (e) => {
         e.preventDefault();
         taskController.handleEditTask();
         closeModal(taskModal);
     });
     
-    // Specific logic for the invite modal
-    document.getElementById('copy-invite-link-button').addEventListener('click', (e) => {
+    document.getElementById('copy-invite-link-button').addEventListener('click', () => {
         const linkInput = document.getElementById('invite-link-input');
         linkInput.select();
         document.execCommand('copy');
         const successMsg = document.getElementById('copy-success-msg');
         successMsg.classList.remove('hidden');
         setTimeout(() => successMsg.classList.add('hidden'), 2000);
+    });
+
+    document.getElementById('add-subtask-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const taskId = document.getElementById('edit-task-id').value;
+        const input = document.getElementById('new-subtask-input');
+        if (input.value.trim()) {
+            taskController.addSubtask(taskId, input.value.trim());
+            input.value = '';
+        }
+    });
+
+    document.getElementById('add-comment-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const taskId = document.getElementById('edit-task-id').value;
+        const input = document.getElementById('new-comment-input');
+        if (input.value.trim()) {
+            taskController.addComment(taskId, input.value.trim());
+            input.value = '';
+        }
     });
 };
 
@@ -165,17 +216,92 @@ export const openModal = (modalElement, task = null) => {
         document.getElementById('edit-task-due-date').value = task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '';
         document.getElementById('edit-task-priority').value = task.priority || 'low';
         document.getElementById('edit-task-status').value = task.status || 'todo';
+
+        const assigneesSelect = document.getElementById('edit-task-assignees');
+        assigneesSelect.innerHTML = '';
+        appState.team.forEach(user => {
+            const option = new Option(user.nickname, user.id);
+            if (task.assignedTo && task.assignedTo.includes(user.id)) {
+                option.selected = true;
+            }
+            assigneesSelect.appendChild(option);
+        });
+
+        renderSubtasks(task);
+        
+        if (activeCommentsListener) activeCommentsListener(); // Unsubscribe from previous listener
+        activeCommentsListener = firebaseService.listenToTaskComments(task.id, (comments) => {
+            renderComments(comments);
+        });
     }
     modalElement.classList.remove('hidden');
 };
 
 export const closeModal = (modalElement) => {
+    if (modalElement.id === 'task-modal' && activeCommentsListener) {
+        activeCommentsListener(); // Unsubscribe from comments listener
+        activeCommentsListener = null;
+    }
     modalElement.classList.add('hidden');
 };
 
-// --- Event Listener Setups ---
-export const setupEventListeners = (appState) => {
-    // Calendar navigation
+const renderSubtasks = (task) => {
+    const subtasksList = document.getElementById('subtasks-list');
+    subtasksList.innerHTML = '';
+    if (task.subtasks && task.subtasks.length > 0) {
+        task.subtasks.forEach((subtask, index) => {
+            const item = document.createElement('div');
+            item.className = `subtask-item ${subtask.isCompleted ? 'completed' : ''}`;
+            item.innerHTML = `
+                <input type="checkbox" ${subtask.isCompleted ? 'checked' : ''}>
+                <span class="subtask-text">${subtask.text}</span>
+                <button class="delete-subtask-btn">&times;</button>
+            `;
+            item.querySelector('input').addEventListener('change', (e) => {
+                taskController.toggleSubtask(task.id, index, e.target.checked);
+            });
+            item.querySelector('button').addEventListener('click', () => {
+                taskController.deleteSubtask(task.id, index);
+            });
+            subtasksList.appendChild(item);
+        });
+    }
+};
+
+const renderComments = (comments) => {
+    const commentsList = document.getElementById('comments-list');
+    commentsList.innerHTML = '';
+    comments.forEach(comment => {
+        const item = document.createElement('div');
+        const author = comment.author.nickname;
+        const timestamp = comment.createdAt?.toDate().toLocaleString() || '...';
+        
+        if (comment.type === 'comment') {
+            item.className = 'comment-item';
+            item.innerHTML = `
+                <div class="avatar comment-avatar">${author.charAt(0).toUpperCase()}</div>
+                <div class="comment-content">
+                    <div class="comment-header">
+                        <span class="comment-author">${author}</span>
+                        <span class="comment-timestamp">${timestamp}</span>
+                    </div>
+                    <div class="comment-body">${comment.text}</div>
+                </div>
+            `;
+        } else {
+            item.className = 'activity-item';
+            item.innerHTML = `
+                <div class="comment-content">
+                    <div class="comment-body">${comment.text}</div>
+                    <div class="comment-timestamp">${timestamp}</div>
+                </div>
+            `;
+        }
+        commentsList.appendChild(item);
+    });
+};
+
+export const setupEventListeners = () => {
     document.getElementById('prev-month').addEventListener('click', () => {
         currentDate.setMonth(currentDate.getMonth() - 1);
         renderCalendarView(appState.tasks);
@@ -185,7 +311,6 @@ export const setupEventListeners = (appState) => {
         renderCalendarView(appState.tasks);
     });
 
-    // Drag and Drop for Kanban
     let draggedItem = null;
     kanbanView.addEventListener('dragstart', (e) => {
         if (e.target.classList.contains('task-item')) {
@@ -193,7 +318,7 @@ export const setupEventListeners = (appState) => {
             setTimeout(() => e.target.classList.add('dragging'), 0);
         }
     });
-    kanbanView.addEventListener('dragend', (e) => {
+    kanbanView.addEventListener('dragend', () => {
         if (draggedItem) {
             draggedItem.classList.remove('dragging');
             draggedItem = null;
@@ -215,13 +340,11 @@ export const setupEventListeners = (appState) => {
     kanbanView.addEventListener('drop', (e) => {
         e.preventDefault();
         const column = e.target.closest('.kanban-column');
-        if (column) {
+        if (column && draggedItem) {
             column.classList.remove('drag-over');
-            if (draggedItem) {
-                const newStatus = column.dataset.status;
-                const taskId = draggedItem.dataset.id;
-                taskController.updateTaskStatus(taskId, newStatus);
-            }
+            const newStatus = column.dataset.status;
+            const taskId = draggedItem.dataset.id;
+            taskController.updateTaskStatus(taskId, newStatus);
         }
     });
 };
