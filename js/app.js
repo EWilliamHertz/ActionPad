@@ -133,9 +133,6 @@ function setupUI() {
         }
     });
 
-    // **MODIFIED**: Use event delegation for project switching.
-    // This single listener on the parent list will handle clicks for all
-    // project items, including ones added later.
     document.getElementById('project-list').addEventListener('click', (e) => {
         if (e.target.matches('.project-item')) {
             const projectId = e.target.dataset.projectId;
@@ -150,8 +147,14 @@ function setupUI() {
     if(changeLogoBtn) changeLogoBtn.addEventListener('click', () => logoUploadInput.click());
     if(logoUploadInput) logoUploadInput.addEventListener('change', handleLogoUpload);
 
+    // **MODIFIED**: This now correctly constructs the URL for GitHub Pages.
     document.getElementById('share-invite-button').addEventListener('click', () => {
-        const inviteLink = `${window.location.origin}/register.html?ref=${appState.company.referralId}`;
+        // Get the current URL and find the last '/' to determine the base path.
+        const currentPath = window.location.href;
+        const basePath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
+        
+        // Construct the correct link to the register page.
+        const inviteLink = `${basePath}register.html?ref=${appState.company.referralId}`;
         uiManager.openInviteModal(inviteLink);
     });
     
