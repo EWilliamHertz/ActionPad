@@ -3,11 +3,12 @@ import { auth, db, rtdb, storage } from './firebase-config.js';
 import {
     createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as firebaseSignOut,
     updatePassword, EmailAuthProvider, reauthenticateWithCredential, 
-    sendEmailVerification as firebaseSendEmailVerification
+    sendEmailVerification as firebaseSendEmailVerification,
+    sendPasswordResetEmail as firebaseSendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 import {
     collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs,
-    query, where, orderBy, serverTimestamp, setDoc, onSnapshot
+    query, where, serverTimestamp, setDoc, onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js";
 import { ref, onValue, onDisconnect, set as rtSet, serverTimestamp as rtServerTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
@@ -19,10 +20,9 @@ const projectsCollection = collection(db, 'projects');
 
 export const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
 
-// **FIX**: This function is now properly exported for other files to use.
-export const sendVerificationEmail = (user) => {
-    return firebaseSendEmailVerification(user);
-};
+export const sendVerificationEmail = (user) => firebaseSendEmailVerification(user);
+
+export const sendPasswordReset = (email) => firebaseSendPasswordResetEmail(auth, email);
 
 export const signOut = () => {
     const user = auth.currentUser;
@@ -37,7 +37,7 @@ export const registerUser = async (userData) => {
     const { email, password, fullName, nickname, companyName, companyRole, referralId } = userData;
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-    await sendVerificationEmail(user); // Use the local (now exported) function
+    await sendVerificationEmail(user);
     try {
         let companyId;
         let finalCompanyName = companyName;
@@ -91,7 +91,7 @@ export const uploadProjectLogo = async (projectId, file) => {
     return getDownloadURL(fileRef);
 };
 export const listenToCompanyProjects = (companyId, callback) => {
-    const q = query(projectsCollection, where("companyId", "==", companyId), orderBy("name"));
+    const q = query(projectsCollection, where("companyId", "==", companyId));
     return onSnapshot(q, (snapshot) => {
         const projects = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         callback(projects);
@@ -103,16 +103,16 @@ export const deleteTask = (taskId) => deleteDoc(doc(tasksCollection, taskId));
 export const listenToCompanyTasks = (companyId, projectId, callback) => {
     let q;
     if (projectId === 'all') {
-        q = query(tasksCollection, where("companyId", "==", companyId), orderBy("createdAt", "desc"));
+        q = query(tasksCollection, where("companyId", "==", companyId));
     } else {
-        q = query(tasksCollection, where("companyId", "==", companyId), where("projectId", "==", projectId), orderBy("createdAt", "desc"));
+        q = query(tasksCollection, where("companyId", "==", companyId), where("projectId", "==", projectId));
     }
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
 };
 export const addComment = (taskId, commentData) => addDoc(collection(db, 'tasks', taskId, 'comments'), { ...commentData, type: 'comment', createdAt: serverTimestamp() });
 export const logActivity = (taskId, activityData) => addDoc(collection(db, 'tasks', taskId, 'comments'), { ...activityData, type: 'activity', createdAt: serverTimestamp() });
 export const listenToTaskComments = (taskId, callback) => {
-    const q = query(collection(db, 'tasks', taskId, 'comments'), orderBy("createdAt", "asc"));
+    const q = query(collection(db, 'tasks', taskId, 'comments'), { orderBy: ["createdAt", "asc"] });
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
 };
 export const manageUserPresence = (user) => {
