@@ -3,7 +3,7 @@ import { auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 import {
     signOut, getUserProfile, getCompany, listenToCompanyTasks, listenToCompanyProjects,
-    manageUserPresence, listenToCompanyPresence
+    manageUserPresence, listenToCompanyPresence, uploadProjectLogo, updateProject
 } from './firebase-service.js';
 import { initializeI18n } from './i18n.js';
 import * as uiManager from './uiManager.js';
@@ -12,7 +12,8 @@ import { showToast } from './toast.js';
 
 const appState = {
     user: null, profile: null, company: null, team: [], projects: [], tasks: [],
-    currentView: 'list-view', currentProjectId: 'all', searchTerm: ''
+    currentView: 'list-view', currentProjectId: 'all', searchTerm: '',
+    tasksListener: null
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -39,7 +40,6 @@ const getUserProfileWithRetry = async (userId, retries = 3, delay = 1000) => {
     throw new Error("Your user profile could not be found. Please contact support.");
 };
 
-
 async function initialize() {
     try {
         const profileSnap = await getUserProfileWithRetry(appState.user.uid);
@@ -56,12 +56,16 @@ async function initialize() {
         listenToCompanyProjects(appState.profile.companyId, (projects) => {
             appState.projects = projects;
             uiManager.renderProjectList(appState.projects, appState.currentProjectId);
+            // If a project is selected, update its header with fresh data
+            if (appState.currentProjectId !== 'all') {
+                const updatedProject = projects.find(p => p.id === appState.currentProjectId);
+                if (updatedProject) {
+                    uiManager.updateProjectHeader(updatedProject);
+                }
+            }
         });
         
-        listenToCompanyTasks(appState.profile.companyId, 'all', (tasks) => {
-            appState.tasks = tasks;
-            uiManager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
-        });
+        switchProject('all');
         
         listenToCompanyPresence(appState.profile.companyId, (users) => {
             appState.team = users;
@@ -72,10 +76,47 @@ async function initialize() {
         document.getElementById('app-container').classList.remove('hidden');
         
     } catch (error) {
-        // **RESTORED**: The automatic sign-out is re-enabled for production.
         console.error("Initialization Failed:", error);
         showToast(error.message || 'Could not initialize the application.', 'error');
         signOut(); 
+    }
+}
+
+function switchProject(projectId) {
+    appState.currentProjectId = projectId;
+    
+    if (appState.tasksListener) {
+        appState.tasksListener(); 
+    }
+    
+    uiManager.renderProjectList(appState.projects, projectId);
+    if (projectId === 'all') {
+        uiManager.hideProjectHeader();
+    } else {
+        const project = appState.projects.find(p => p.id === projectId);
+        if (project) {
+            uiManager.updateProjectHeader(project);
+        }
+    }
+
+    appState.tasksListener = listenToCompanyTasks(appState.profile.companyId, projectId, (tasks) => {
+        appState.tasks = tasks;
+        uiManager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
+    });
+}
+
+async function handleLogoUpload(e) {
+    const file = e.target.files[0];
+    if (!file || appState.currentProjectId === 'all') return;
+
+    showToast('Uploading logo...', 'success');
+    try {
+        const logoURL = await uploadProjectLogo(appState.currentProjectId, file);
+        await updateProject(appState.currentProjectId, { logoURL });
+        showToast('Logo updated!', 'success');
+    } catch (error) {
+        console.error("Logo upload failed:", error);
+        showToast('Logo upload failed.', 'error');
     }
 }
 
@@ -92,7 +133,21 @@ function setupUI() {
             uiManager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
         }
     });
+
+    document.getElementById('project-list').addEventListener('click', (e) => {
+        if (e.target.matches('.project-item')) {
+            const projectId = e.target.dataset.projectId;
+            if (projectId !== appState.currentProjectId) {
+                switchProject(projectId);
+            }
+        }
+    });
     
+    const logoUploadInput = document.getElementById('logo-upload-input');
+    const changeLogoBtn = document.getElementById('change-logo-btn');
+    if(changeLogoBtn) changeLogoBtn.addEventListener('click', () => logoUploadInput.click());
+    if(logoUploadInput) logoUploadInput.addEventListener('change', handleLogoUpload);
+
     document.getElementById('share-invite-button').addEventListener('click', () => {
         const inviteLink = `${window.location.origin}/register.html?ref=${appState.company.referralId}`;
         uiManager.openInviteModal(inviteLink);
