@@ -1,42 +1,67 @@
 import { auth, db } from './firebaseConfig.js';
+import {
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    signOut as firebaseSignOut,
+    onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+import {
+    collection,
+    addDoc,
+    updateDoc,
+    deleteDoc,
+    doc,
+    onSnapshot,
+    query,
+    where,
+    orderBy,
+    serverTimestamp
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+
+// Re-export onAuthStateChanged to be used in app.js
+export { onAuthStateChanged };
 
 // --- Authentication Functions ---
-export const signIn = (email, password) => auth.signInWithEmailAndPassword(email, password);
-export const register = (email, password) => auth.createUserWithEmailAndPassword(email, password);
-export const signOut = () => auth.signOut();
+export const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
+export const register = (email, password) => createUserWithEmailAndPassword(auth, email, password);
+export const signOut = () => firebaseSignOut(auth);
 
 // --- Firestore Functions ---
-const tasksCollection = db.collection('tasks');
+const tasksCollection = collection(db, 'tasks');
 
 export const addTask = (taskData) => {
     const user = auth.currentUser;
     if (!user) return Promise.reject("User not authenticated");
 
-    return tasksCollection.add({
+    return addDoc(tasksCollection, {
         ...taskData,
         userId: user.uid,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
     });
 };
 
 export const updateTask = (taskId, updatedData) => {
-    return tasksCollection.doc(taskId).update({
+    const taskDocRef = doc(db, 'tasks', taskId);
+    return updateDoc(taskDocRef, {
         ...updatedData,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        updatedAt: serverTimestamp()
     });
 };
 
 export const deleteTask = (taskId) => {
-    return tasksCollection.doc(taskId).delete();
+    const taskDocRef = doc(db, 'tasks', taskId);
+    return deleteDoc(taskDocRef);
 };
 
 export const listenToTasks = (userId, callback) => {
-    return tasksCollection.where("userId", "==", userId).orderBy("createdAt", "desc")
-        .onSnapshot(snapshot => {
-            const tasks = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            callback(tasks);
-        });
+    const q = query(tasksCollection, where("userId", "==", userId), orderBy("createdAt", "desc"));
+
+    return onSnapshot(q, (snapshot) => {
+        const tasks = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+        callback(tasks);
+    });
 };
