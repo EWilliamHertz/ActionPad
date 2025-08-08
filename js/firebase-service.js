@@ -8,7 +8,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 import {
     collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs,
-    query, where, serverTimestamp, setDoc, onSnapshot
+    query, where, serverTimestamp, setDoc, onSnapshot, orderBy
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js";
 import { ref, onValue, onDisconnect, set as rtSet, serverTimestamp as rtServerTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
@@ -17,6 +17,12 @@ const usersCollection = collection(db, 'users');
 const companiesCollection = collection(db, 'companies');
 const tasksCollection = collection(db, 'tasks');
 const projectsCollection = collection(db, 'projects');
+const chatCollection = collection(db, 'team_chat');
+
+// --- Gemini API Key ---
+const GEMINI_API_KEY = "AIzaSyC9VG3fpf0VAsKfWgJE60lGWcmH6qObCN0";
+
+// --- Authentication & User Management ---
 
 export const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
 
@@ -28,6 +34,7 @@ export const signOut = () => {
     const user = auth.currentUser;
     if (user) {
         const userStatusFirestoreRef = doc(db, '/users/' + user.uid);
+        // Set user to offline in Firestore on manual sign-out.
         updateDoc(userStatusFirestoreRef, { online: false, last_changed: serverTimestamp() }).catch(err => console.error("Error signing out:", err));
     }
     return firebaseSignOut(auth);
@@ -62,13 +69,12 @@ export const registerUser = async (userData) => {
         return user;
     } catch (error) {
         console.error("Error creating user profile in Firestore:", error);
-        throw error; // Re-throw the original error to be handled by the UI
+        throw error; 
     }
 };
 
 export const getUserProfile = (userId) => getDoc(doc(usersCollection, userId));
 export const getCompany = (companyId) => getDoc(doc(companiesCollection, companyId));
-export const getCompanyUsers = (companyId) => getDocs(query(usersCollection, where("companyId", "==", companyId)));
 export const updateUserProfile = (userId, newData) => updateDoc(doc(db, 'users', userId), newData);
 export const uploadAvatar = async (userId, file) => {
     const filePath = `avatars/${userId}/${file.name}`;
@@ -82,6 +88,37 @@ export const updateUserPassword = async (currentPassword, newPassword) => {
     await reauthenticateWithCredential(user, credential);
     await updatePassword(user, newPassword);
 };
+
+// --- Presence Management (FIXED) ---
+export const manageUserPresence = (user) => {
+    const userStatusDatabaseRef = ref(rtdb, '/status/' + user.uid);
+    const userStatusFirestoreRef = doc(db, '/users/' + user.uid);
+
+    const isOfflineForDatabase = { state: 'offline', last_changed: rtServerTimestamp() };
+    const isOnlineForDatabase = { state: 'online', last_changed: rtServerTimestamp() };
+    
+    const isOfflineForFirestore = { online: false, last_changed: serverTimestamp() };
+    const isOnlineForFirestore = { online: true, last_changed: serverTimestamp() };
+
+    onValue(ref(rtdb, '.info/connected'), (snapshot) => {
+        if (snapshot.val() === false) {
+            updateDoc(userStatusFirestoreRef, isOfflineForFirestore).catch(()=>{});
+            return;
+        }
+        onDisconnect(userStatusDatabaseRef).set(isOfflineForDatabase).then(() => {
+            rtSet(userStatusDatabaseRef, isOnlineForDatabase);
+            updateDoc(userStatusFirestoreRef, isOnlineForFirestore).catch(()=>{});
+        });
+    });
+};
+
+export const listenToCompanyPresence = (companyId, callback) => {
+    const q = query(usersCollection, where("companyId", "==", companyId));
+    return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+};
+
+
+// --- Projects ---
 export const addProject = (projectData) => addDoc(projectsCollection, { ...projectData, createdAt: serverTimestamp() });
 export const updateProject = (projectId, data) => updateDoc(doc(db, 'projects', projectId), data);
 export const uploadProjectLogo = async (projectId, file) => {
@@ -97,43 +134,101 @@ export const listenToCompanyProjects = (companyId, callback) => {
         callback(projects);
     });
 };
-export const addTask = (taskData, companyId, author) => addDoc(tasksCollection, { ...taskData, companyId, author: { uid: author.uid, nickname: author.nickname }, assignedTo: [], subtasks: [], attachments: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+
+// --- Tasks ---
+export const addTask = (taskData, companyId, author) => {
+    const language = localStorage.getItem('actionPadLanguage') || 'en';
+    return addDoc(tasksCollection, { 
+        ...taskData, 
+        companyId, 
+        author: { uid: author.uid, nickname: author.nickname }, 
+        assignedTo: [], 
+        subtasks: [], 
+        attachments: [], 
+        language, // Save the original language
+        createdAt: serverTimestamp(), 
+        updatedAt: serverTimestamp() 
+    });
+}
 export const updateTask = (taskId, updatedData) => updateDoc(doc(tasksCollection, taskId), { ...updatedData, updatedAt: serverTimestamp() });
 export const deleteTask = (taskId) => deleteDoc(doc(tasksCollection, taskId));
 export const listenToCompanyTasks = (companyId, projectId, callback) => {
     let q;
     if (projectId === 'all') {
-        q = query(tasksCollection, where("companyId", "==", companyId));
+        q = query(tasksCollection, where("companyId", "==", companyId), orderBy("createdAt", "desc"));
     } else {
-        q = query(tasksCollection, where("companyId", "==", companyId), where("projectId", "==", projectId));
+        q = query(tasksCollection, where("companyId", "==", companyId), where("projectId", "==", projectId), orderBy("createdAt", "desc"));
     }
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
 };
-export const addComment = (taskId, commentData) => addDoc(collection(db, 'tasks', taskId, 'comments'), { ...commentData, type: 'comment', createdAt: serverTimestamp() });
+
+// --- Comments & Activity ---
+export const addComment = (taskId, commentData) => {
+     const language = localStorage.getItem('actionPadLanguage') || 'en';
+    return addDoc(collection(db, 'tasks', taskId, 'comments'), { 
+        ...commentData, 
+        type: 'comment',
+        language, // Save the original language
+        createdAt: serverTimestamp() 
+    });
+}
 export const logActivity = (taskId, activityData) => addDoc(collection(db, 'tasks', taskId, 'comments'), { ...activityData, type: 'activity', createdAt: serverTimestamp() });
 export const listenToTaskComments = (taskId, callback) => {
-    const q = query(collection(db, 'tasks', taskId, 'comments'), { orderBy: ["createdAt", "asc"] });
+    const q = query(collection(db, 'tasks', taskId, 'comments'), orderBy("createdAt", "asc"));
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
 };
-export const manageUserPresence = (user) => {
-    const userStatusDatabaseRef = ref(rtdb, '/status/' + user.uid);
-    const userStatusFirestoreRef = doc(db, '/users/' + user.uid);
-    const isOfflineForDatabase = { state: 'offline', last_changed: rtServerTimestamp() };
-    const isOnlineForDatabase = { state: 'online', last_changed: rtServerTimestamp() };
-    const isOfflineForFirestore = { online: false, last_changed: serverTimestamp() };
-    const isOnlineForFirestore = { online: true, last_changed: serverTimestamp() };
-    onValue(ref(rtdb, '.info/connected'), (snapshot) => {
-        if (snapshot.val() === false) {
-            updateDoc(userStatusFirestoreRef, isOfflineForFirestore).catch(()=>{});
-            return;
-        }
-        onDisconnect(userStatusDatabaseRef).set(isOfflineForDatabase).then(() => {
-            rtSet(userStatusDatabaseRef, isOnlineForDatabase);
-            updateDoc(userStatusFirestoreRef, isOnlineForFirestore).catch(()=>{});
-        });
+
+
+// --- NEW: Team Chat ---
+export const addChatMessage = (companyId, author, text) => {
+    return addDoc(chatCollection, {
+        companyId,
+        author, // { uid, nickname, avatarURL }
+        text,
+        createdAt: serverTimestamp()
     });
 };
-export const listenToCompanyPresence = (companyId, callback) => {
-    const q = query(usersCollection, where("companyId", "==", companyId));
-    return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+
+export const listenToCompanyChat = (companyId, callback) => {
+    const q = query(chatCollection, where("companyId", "==", companyId), orderBy("createdAt", "asc"));
+    return onSnapshot(q, (snapshot) => {
+        const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(messages);
+    });
+};
+
+
+// --- NEW: Translation Service ---
+export const translateText = async (text, targetLanguage) => {
+    if (!text || !targetLanguage) return text;
+
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`;
+    
+    const prompt = `Translate the following text to ${targetLanguage}: "${text}"`;
+
+    try {
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }]
+            })
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            console.error("Translation API Error:", response.status, errorBody);
+            return text; // Return original text on API error
+        }
+
+        const data = await response.json();
+        const translatedText = data.candidates[0]?.content?.parts[0]?.text;
+        
+        return translatedText ? translatedText.trim() : text;
+    } catch (error) {
+        console.error('Failed to fetch translation:', error);
+        return text; // Return original text on network error
+    }
 };
