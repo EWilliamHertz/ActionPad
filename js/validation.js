@@ -24,7 +24,6 @@ function validateEmail(input) {
 }
 
 function validateRequired(input) {
-    // **THE FIX**: If an input is disabled, it is considered valid for this check.
     if (input.disabled) {
         return true;
     }
