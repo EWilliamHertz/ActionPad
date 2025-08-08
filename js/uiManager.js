@@ -11,7 +11,51 @@ export const initUIManager = (state) => {
 const listView = document.getElementById('list-view');
 const kanbanView = document.getElementById('kanban-view');
 const taskModal = document.getElementById('task-modal');
+const inviteModal = document.getElementById('invite-modal');
 let currentDate = new Date();
+
+/**
+ * **NEW**: Updates the user's info in the header.
+ */
+export const updateUserInfo = (profile, company) => {
+    if (profile) {
+        document.getElementById('user-nickname').textContent = profile.nickname;
+        const avatar = document.getElementById('user-avatar-header');
+        if (profile.avatarURL) {
+            avatar.src = profile.avatarURL;
+        } else {
+            avatar.src = `https://placehold.co/40x40/E9ECEF/495057?text=${profile.nickname.charAt(0).toUpperCase()}`;
+        }
+    }
+    if (company) {
+        document.getElementById('user-company').textContent = company.name;
+    }
+};
+
+/**
+ * **NEW**: Renders the list of projects in the sidebar.
+ */
+export const renderProjectList = (projects, currentProjectId) => {
+    const projectListEl = document.getElementById('project-list');
+    // Keep the "All Tasks" item
+    projectListEl.innerHTML = `<li class="project-item ${currentProjectId === 'all' ? 'active' : ''}" data-project-id="all">All Tasks</li>`;
+    projects.forEach(project => {
+        const item = document.createElement('li');
+        item.className = `project-item ${currentProjectId === project.id ? 'active' : ''}`;
+        item.dataset.projectId = project.id;
+        item.textContent = project.name;
+        projectListEl.appendChild(item);
+    });
+};
+
+/**
+ * **NEW**: Opens the invite modal with the company's referral link.
+ */
+export const openInviteModal = (inviteLink) => {
+    document.getElementById('invite-link-input').value = inviteLink;
+    inviteModal.classList.remove('hidden');
+};
+
 
 export const switchView = (viewId) => {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -262,7 +306,7 @@ const renderSubtasks = (task) => {
             });
             item.querySelector('button').addEventListener('click', () => {
                 taskController.deleteSubtask(task.id, index);
-            });
+});
             subtasksList.appendChild(item);
         });
     }
