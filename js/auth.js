@@ -8,13 +8,11 @@ import { validateForm, setupLiveValidation } from './validation.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     onAuthStateChanged(auth, user => {
-        // If user is logged in, redirect to the main app page
         if (user && !window.location.pathname.includes('index.html')) {
             window.location.replace('index.html');
         }
     });
 
-    // Initialize internationalization (language support)
     initializeI18n();
 
     // --- Login Form Logic ---
@@ -23,12 +21,14 @@ document.addEventListener('DOMContentLoaded', () => {
         setupLiveValidation(loginForm);
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            if (!validateForm(loginForm)) return; // Stop if validation fails
+            if (!validateForm(loginForm)) return;
             try {
                 await signIn(document.getElementById('login-email').value, document.getElementById('login-password').value);
                 window.location.href = 'index.html';
             } catch (error) {
-                showToast("Login failed. Please check your email and password.", 'error');
+                // Log the specific error and show a user-friendly message
+                console.error("Login failed:", error.code, error.message);
+                showToast(error.message, 'error');
             }
         });
     }
@@ -38,7 +38,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (registerForm) {
         setupLiveValidation(registerForm);
 
-        // Check for a referral ID in the URL to pre-fill the form
         const urlParams = new URLSearchParams(window.location.search);
         const refId = urlParams.get('ref');
         if (refId) {
@@ -50,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         registerForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            if (!validateForm(registerForm)) return; // Stop if validation fails
+            if (!validateForm(registerForm)) return;
             const userData = {
                 email: document.getElementById('register-email').value,
                 password: document.getElementById('register-password').value,
@@ -62,9 +61,26 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             try {
                 await registerUser(userData);
-                window.location.href = 'index.html';
+                // After successful registration and email sending
+                showToast('Registration successful! Please check your email to verify your account.', 'success');
+                // Redirect to login page to wait for verification
+                setTimeout(() => {
+                    window.location.href = 'login.html';
+                }, 3000);
+
             } catch (error) {
-                showToast(error.message, 'error');
+                // **MODIFIED**: Added detailed console logging and user-friendly messages.
+                console.error("Registration failed with error code:", error.code);
+                console.error("Full error object:", error);
+                
+                let message = 'An unknown error occurred during registration.';
+                if (error.code === 'auth/email-already-in-use') {
+                    message = 'This email address is already registered. Please try logging in.';
+                } else if (error.code) {
+                    message = error.message; // Use the default Firebase message
+                }
+                
+                showToast(message, 'error');
             }
         });
     }
