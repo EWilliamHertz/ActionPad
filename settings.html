@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - ActionPad</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="toast-container"></div>
+    <div class="settings-page-container">
+        <header class="settings-header">
+            <h1>Settings</h1>
+            <a href="index.html" class="back-link">&larr; Back to ActionPad</a>
+        </header>
+
+        <main class="settings-main">
+            <!-- Profile Information Section -->
+            <div class="settings-card">
+                <h2>Profile Information</h2>
+                <form id="profile-info-form" class="settings-form">
+                    <div class="avatar-upload-container">
+                        <img id="avatar-preview" src="https://placehold.co/100x100/E9ECEF/495057?text=Avatar" alt="Your Avatar">
+                        <input type="file" id="avatar-upload-input" accept="image/png, image/jpeg" class="hidden">
+                        <button type="button" id="avatar-upload-button">Change Avatar</button>
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-nickname">Nickname</label>
+                        <input type="text" id="profile-nickname" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="profile-companyrole">Your Role</label>
+                        <input type="text" id="profile-companyrole" required>
+                    </div>
+                    <button type="submit">Save Profile</button>
+                </form>
+            </div>
+
+            <!-- Change Password Section -->
+            <div class="settings-card">
+                <h2>Change Password</h2>
+                <form id="change-password-form" class="settings-form">
+                    <div class="form-group">
+                        <label for="current-password">Current Password</label>
+                        <input type="password" id="current-password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="new-password">New Password</label>
+                        <input type="password" id="new-password" minlength="6" required>
+                    </div>
+                    <button type="submit">Update Password</button>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <script type="module" src="js/settings.js"></script>
+</body>
+</html>
