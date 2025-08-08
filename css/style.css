@@ -283,6 +283,100 @@ main { padding: 2rem; overflow-y: auto; }
 .hamburger-menu { display: none; flex-direction: column; justify-content: space-around; width: 30px; height: 30px; background: transparent; border: none; cursor: pointer; padding: 0; z-index: 1100; }
 .hamburger-menu span { width: 30px; height: 3px; background-color: var(--text-color); border-radius: 10px; transition: all 0.3s linear; }
 
+/* NEW: Team Chat Styles */
+#team-chat-panel {
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+    padding-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1; /* Allows chat to take remaining space */
+    min-height: 200px; /* Ensures chat has a minimum height */
+}
+
+#team-chat-messages {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.chat-message {
+    display: flex;
+    gap: 0.75rem;
+    max-width: 90%;
+}
+
+.chat-message .avatar {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+}
+
+.chat-message-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-message-header {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.2rem;
+}
+
+.chat-author {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.chat-timestamp {
+    font-size: 0.75rem;
+    color: var(--subtle-text-color);
+}
+
+.chat-text {
+    background-color: var(--background-color);
+    padding: 0.5rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.9rem;
+}
+
+.chat-message.is-self {
+    align-self: flex-end;
+}
+
+.chat-message.is-self .chat-text {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+#team-chat-form {
+    display: flex;
+    border-top: 1px solid var(--border-color);
+    padding-top: 0.75rem;
+}
+
+#team-chat-input {
+    flex-grow: 1;
+    border: 1px solid var(--border-color);
+    padding: 0.6rem;
+    border-radius: 6px 0 0 6px;
+    border-right: none;
+}
+#team-chat-form button {
+    padding: 0.6rem 1rem;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 0 6px 6px 0;
+    cursor: pointer;
+}
+
+
 @media (max-width: 992px) {
     .hamburger-menu { display: flex; }
     .main-layout { grid-template-columns: 1fr; }
