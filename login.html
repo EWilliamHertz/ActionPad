@@ -15,6 +15,11 @@
             <h2 data-i18n="welcomeBack">Welcome Back!</h2>
             <p class="auth-sub-header" data-i18n="loginPrompt">Please sign in to continue.</p>
             
+            <!-- **NEW**: This container will hold the email verification message and button -->
+            <div id="email-verification-notice" class="form-group hidden" style="text-align: center; background-color: #fffbe6; padding: 1rem; border-radius: 6px; border: 1px solid #fde086;">
+                <!-- Content will be injected by auth.js -->
+            </div>
+
             <form id="login-form" class="auth-form" novalidate>
                 <div class="form-group">
                     <label for="login-email" data-i18n="email">Email</label>
