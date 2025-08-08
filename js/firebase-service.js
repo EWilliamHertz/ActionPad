@@ -16,23 +16,13 @@ const companiesCollection = collection(db, 'companies');
 const tasksCollection = collection(db, 'tasks');
 const projectsCollection = collection(db, 'projects');
 
-/**
- * **MODIFIED**: Signs in a user but requires their email to be verified.
- */
-export const signIn = async (email, password) => {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    if (!userCredential.user.emailVerified) {
-        await firebaseSignOut(auth); // Sign out the unverified user
-        throw new Error("Please verify your email before logging in.");
-    }
-    return userCredential;
-};
+export const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
 
 export const signOut = () => {
     const user = auth.currentUser;
     if (user) {
         const userStatusFirestoreRef = doc(db, '/users/' + user.uid);
-        updateDoc(userStatusFirestoreRef, { online: false, last_changed: serverTimestamp() });
+        updateDoc(userStatusFirestoreRef, { online: false, last_changed: serverTimestamp() }).catch(err => console.error("Error signing out:", err));
     }
     return firebaseSignOut(auth);
 };
@@ -40,84 +30,85 @@ export const signOut = () => {
 export const registerUser = async (userData) => {
     const { email, password, fullName, nickname, companyName, companyRole, referralId } = userData;
     
+    // Step 1: Create the Auth user.
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
-    // Send a verification email to the new user.
+    // Step 2: Send the verification email.
     await sendEmailVerification(user);
 
-    let companyId;
-    let finalCompanyName = companyName;
+    // **MODIFIED**: Wrap Firestore operations in a try/catch to handle errors.
+    try {
+        let companyId;
+        let finalCompanyName = companyName;
 
-    if (referralId) {
-        const q = query(companiesCollection, where("referralId", "==", Number(referralId)));
-        const querySnapshot = await getDocs(q);
-        if (!querySnapshot.empty) {
-            const companyDoc = querySnapshot.docs[0];
-            companyId = companyDoc.id;
-            finalCompanyName = companyDoc.data().name;
+        if (referralId) {
+            const q = query(companiesCollection, where("referralId", "==", Number(referralId)));
+            const querySnapshot = await getDocs(q);
+            if (!querySnapshot.empty) {
+                const companyDoc = querySnapshot.docs[0];
+                companyId = companyDoc.id;
+                finalCompanyName = companyDoc.data().name;
+            } else {
+                // This error will now be caught and shown to the user.
+                throw new Error("Invalid Referral ID. Company not found.");
+            }
         } else {
-            throw new Error("Invalid Referral ID. Company not found.");
+            const newCompanyRef = await addDoc(companiesCollection, {
+                name: companyName,
+                referralId: Math.floor(100000 + Math.random() * 900000),
+                createdAt: serverTimestamp()
+            });
+            companyId = newCompanyRef.id;
         }
-    } else {
-        const newCompanyRef = await addDoc(companiesCollection, {
-            name: companyName,
-            referralId: Math.floor(100000 + Math.random() * 900000),
-            createdAt: serverTimestamp()
+
+        // Create the user's profile document. This is the critical step that was failing.
+        await setDoc(doc(usersCollection, user.uid), {
+            fullName,
+            nickname,
+            email,
+            companyRole,
+            companyId,
+            companyName: finalCompanyName,
+            online: false,
+            last_changed: serverTimestamp()
         });
-        companyId = newCompanyRef.id;
+
+        return user;
+    } catch (error) {
+        // If Firestore operations fail, the user is in a broken state.
+        // For a production app, you would ideally delete the auth user here via a Cloud Function.
+        // For now, we re-throw the error to be handled by the UI.
+        console.error("Error creating user profile in Firestore:", error);
+        throw new Error("Your account was created, but we failed to set up your profile. Please contact support.");
     }
-
-    await setDoc(doc(usersCollection, user.uid), {
-        fullName,
-        nickname,
-        email,
-        companyRole,
-        companyId,
-        companyName: finalCompanyName,
-        online: false,
-        last_changed: serverTimestamp()
-    });
-
-    return user;
 };
 
 
 export const getUserProfile = (userId) => getDoc(doc(usersCollection, userId));
-
 export const getCompany = (companyId) => getDoc(doc(companiesCollection, companyId));
-
 export const getCompanyUsers = (companyId) => getDocs(query(usersCollection, where("companyId", "==", companyId)));
-
 export const updateUserProfile = (userId, newData) => updateDoc(doc(db, 'users', userId), newData);
-
 export const uploadAvatar = async (userId, file) => {
     const filePath = `avatars/${userId}/${file.name}`;
     const fileRef = storageRef(storage, filePath);
     await uploadBytes(fileRef, file);
     return getDownloadURL(fileRef);
 };
-
 export const updateUserPassword = async (currentPassword, newPassword) => {
     const user = auth.currentUser;
     const credential = EmailAuthProvider.credential(user.email, currentPassword);
     await reauthenticateWithCredential(user, credential);
     await updatePassword(user, newPassword);
 };
-
 export const addProject = (projectData) => addDoc(projectsCollection, { ...projectData, createdAt: serverTimestamp() });
-
 export const listenToCompanyProjects = (companyId, callback) => {
     const q = query(projectsCollection, where("companyId", "==", companyId), orderBy("name"));
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
 };
-
 export const addTask = (taskData, companyId, author) => addDoc(tasksCollection, { ...taskData, companyId, author: { uid: author.uid, nickname: author.nickname }, assignedTo: [], subtasks: [], attachments: [], createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-
 export const updateTask = (taskId, updatedData) => updateDoc(doc(tasksCollection, taskId), { ...updatedData, updatedAt: serverTimestamp() });
-
 export const deleteTask = (taskId) => deleteDoc(doc(tasksCollection, taskId));
-
 export const listenToCompanyTasks = (companyId, projectId, callback) => {
     let q;
     if (projectId === 'all') {
@@ -127,16 +118,12 @@ export const listenToCompanyTasks = (companyId, projectId, callback) => {
     }
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
 };
-
 export const addComment = (taskId, commentData) => addDoc(collection(db, 'tasks', taskId, 'comments'), { ...commentData, type: 'comment', createdAt: serverTimestamp() });
-
 export const logActivity = (taskId, activityData) => addDoc(collection(db, 'tasks', taskId, 'comments'), { ...activityData, type: 'activity', createdAt: serverTimestamp() });
-
 export const listenToTaskComments = (taskId, callback) => {
     const q = query(collection(db, 'tasks', taskId, 'comments'), orderBy("createdAt", "asc"));
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
 };
-
 export const manageUserPresence = (user) => {
     const userStatusDatabaseRef = ref(rtdb, '/status/' + user.uid);
     const userStatusFirestoreRef = doc(db, '/users/' + user.uid);
@@ -146,16 +133,15 @@ export const manageUserPresence = (user) => {
     const isOnlineForFirestore = { online: true, last_changed: serverTimestamp() };
     onValue(ref(rtdb, '.info/connected'), (snapshot) => {
         if (snapshot.val() === false) {
-            updateDoc(userStatusFirestoreRef, isOfflineForFirestore);
+            updateDoc(userStatusFirestoreRef, isOfflineForFirestore).catch(()=>{});
             return;
         }
         onDisconnect(userStatusDatabaseRef).set(isOfflineForDatabase).then(() => {
             rtSet(userStatusDatabaseRef, isOnlineForDatabase);
-            updateDoc(userStatusFirestoreRef, isOnlineForFirestore);
+            updateDoc(userStatusFirestoreRef, isOnlineForFirestore).catch(()=>{});
         });
     });
 };
-
 export const listenToCompanyPresence = (companyId, callback) => {
     const q = query(usersCollection, where("companyId", "==", companyId));
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
