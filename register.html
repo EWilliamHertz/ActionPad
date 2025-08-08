@@ -8,50 +8,56 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-
+    <div id="toast-container"></div>
     <div class="auth-page-container">
         <div class="auth-box">
             <h1 class="auth-header">ActionPad</h1>
             <h2 data-i18n="createAccount">Create Your Account</h2>
             <p class="auth-sub-header" data-i18n="joinTeam">Join your team or start a new one.</p>
 
-            <form id="register-form" class="auth-form">
+            <form id="register-form" class="auth-form" novalidate>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="register-fullname" data-i18n="fullName">Full Name</label>
                         <input type="text" id="register-fullname" required>
+                        <div class="validation-error"></div>
                     </div>
                     <div class="form-group">
                         <label for="register-nickname" data-i18n="nickname">Nickname</label>
                         <input type="text" id="register-nickname" required>
+                        <div class="validation-error"></div>
                     </div>
                 </div>
                 <div class="form-group">
                     <label for="register-email" data-i18n="email">Email</label>
                     <input type="email" id="register-email" required>
+                    <div class="validation-error"></div>
                 </div>
                 <div class="form-group">
                     <label for="register-password" data-i18n="password">Password</label>
                     <input type="password" id="register-password" minlength="6" required>
+                    <div class="validation-error"></div>
                 </div>
                 <hr>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="register-companyname" data-i18n="companyName">Company Name</label>
                         <input type="text" id="register-companyname" required>
+                        <div class="validation-error"></div>
                     </div>
                     <div class="form-group">
                         <label for="register-companyrole" data-i18n="companyRole">Your Role</label>
                         <input type="text" id="register-companyrole" required>
+                        <div class="validation-error"></div>
                     </div>
                 </div>
                 <div class="form-group">
                     <label for="register-referralid" data-i18n="referralId">Referral ID (Optional)</label>
                     <input type="number" id="register-referralid" placeholder="Enter ID to join an existing company">
+                    <div class="validation-error"></div>
                 </div>
 
                 <button type="submit" data-i18n="registerAndJoin">Register & Join</button>
-                <p class="auth-error" id="register-error"></p>
             </form>
 
             <p class="auth-toggle">
@@ -60,7 +66,6 @@
             </p>
         </div>
     </div>
-
     <footer class="language-footer">
         <div class="language-switcher">
             <button class="lang-btn" data-lang="en">English</button>
@@ -68,7 +73,6 @@
             <button class="lang-btn" data-lang="zh">中文</button>
         </div>
     </footer>
-
     <script type="module" src="js/auth.js"></script>
 </body>
 </html>
