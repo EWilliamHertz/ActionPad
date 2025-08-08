@@ -3,7 +3,8 @@ import { auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 import {
     signOut, getUserProfile, getCompany, listenToCompanyTasks, listenToCompanyProjects,
-    manageUserPresence, listenToCompanyPresence, uploadProjectLogo, updateProject
+    manageUserPresence, listenToCompanyPresence, uploadProjectLogo, updateProject,
+    listenToCompanyChat, addChatMessage
 } from './firebase-service.js';
 import { initializeI18n } from './i18n.js';
 import * as uiManager from './uiManager.js';
@@ -13,7 +14,8 @@ import { showToast } from './toast.js';
 const appState = {
     user: null, profile: null, company: null, team: [], projects: [], tasks: [],
     currentView: 'list-view', currentProjectId: 'all', searchTerm: '',
-    tasksListener: null
+    tasksListener: null,
+    chatListener: null,
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -69,6 +71,12 @@ async function initialize() {
         listenToCompanyPresence(appState.profile.companyId, (users) => {
             appState.team = users;
             uiManager.renderTeamList(appState.team);
+        });
+
+        // NEW: Listen to company chat
+        if (appState.chatListener) appState.chatListener(); // Unsubscribe from previous listener
+        appState.chatListener = listenToCompanyChat(appState.profile.companyId, (messages) => {
+            uiManager.renderChatMessages(messages, appState.user.uid);
         });
         
         manageUserPresence(appState.user);
@@ -147,13 +155,9 @@ function setupUI() {
     if(changeLogoBtn) changeLogoBtn.addEventListener('click', () => logoUploadInput.click());
     if(logoUploadInput) logoUploadInput.addEventListener('change', handleLogoUpload);
 
-    // **MODIFIED**: This now correctly constructs the URL for GitHub Pages.
     document.getElementById('share-invite-button').addEventListener('click', () => {
-        // Get the current URL and find the last '/' to determine the base path.
         const currentPath = window.location.href;
         const basePath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
-        
-        // Construct the correct link to the register page.
         const inviteLink = `${basePath}register.html?ref=${appState.company.referralId}`;
         uiManager.openInviteModal(inviteLink);
     });
@@ -165,6 +169,23 @@ function setupUI() {
     document.getElementById('search-bar').addEventListener('input', (e) => {
         appState.searchTerm = e.target.value;
         uiManager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
+    });
+
+    // NEW: Team Chat Form
+    document.getElementById('team-chat-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('team-chat-input');
+        const text = input.value.trim();
+        if (text) {
+            const author = {
+                uid: appState.user.uid,
+                nickname: appState.profile.nickname,
+                avatarURL: appState.profile.avatarURL || null
+            };
+            addChatMessage(appState.profile.companyId, author, text)
+                .catch(err => console.error("Error sending chat message:", err));
+            input.value = '';
+        }
     });
 
     taskController.setupProjectForm(appState);
