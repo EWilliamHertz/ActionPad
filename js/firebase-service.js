@@ -2,7 +2,8 @@
 import { auth, db, rtdb, storage } from './firebase-config.js';
 import {
     createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as firebaseSignOut,
-    updatePassword, EmailAuthProvider, reauthenticateWithCredential, sendEmailVerification
+    updatePassword, EmailAuthProvider, reauthenticateWithCredential, 
+    sendEmailVerification as firebaseSendEmailVerification // Import the function
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 import {
     collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs,
@@ -16,7 +17,13 @@ const companiesCollection = collection(db, 'companies');
 const tasksCollection = collection(db, 'tasks');
 const projectsCollection = collection(db, 'projects');
 
+// **MODIFIED**: Simplified to just handle the sign-in. The UI will handle the verification check.
 export const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
+
+// **NEW**: Exported function to allow resending the verification email.
+export const sendVerificationEmail = (user) => {
+    return firebaseSendEmailVerification(user);
+};
 
 export const signOut = () => {
     const user = auth.currentUser;
@@ -30,14 +37,12 @@ export const signOut = () => {
 export const registerUser = async (userData) => {
     const { email, password, fullName, nickname, companyName, companyRole, referralId } = userData;
     
-    // Step 1: Create the Auth user.
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
-    // Step 2: Send the verification email.
-    await sendEmailVerification(user);
+    // This is the call that sends the initial email.
+    await sendVerificationEmail(user);
 
-    // **MODIFIED**: Wrap Firestore operations in a try/catch to handle errors.
     try {
         let companyId;
         let finalCompanyName = companyName;
@@ -50,7 +55,6 @@ export const registerUser = async (userData) => {
                 companyId = companyDoc.id;
                 finalCompanyName = companyDoc.data().name;
             } else {
-                // This error will now be caught and shown to the user.
                 throw new Error("Invalid Referral ID. Company not found.");
             }
         } else {
@@ -62,28 +66,19 @@ export const registerUser = async (userData) => {
             companyId = newCompanyRef.id;
         }
 
-        // Create the user's profile document. This is the critical step that was failing.
         await setDoc(doc(usersCollection, user.uid), {
-            fullName,
-            nickname,
-            email,
-            companyRole,
-            companyId,
-            companyName: finalCompanyName,
-            online: false,
-            last_changed: serverTimestamp()
+            fullName, nickname, email, companyRole, companyId,
+            companyName: finalCompanyName, online: false, last_changed: serverTimestamp()
         });
 
         return user;
     } catch (error) {
-        // If Firestore operations fail, the user is in a broken state.
-        // For a production app, you would ideally delete the auth user here via a Cloud Function.
-        // For now, we re-throw the error to be handled by the UI.
         console.error("Error creating user profile in Firestore:", error);
         throw new Error("Your account was created, but we failed to set up your profile. Please contact support.");
     }
 };
 
+// ... (rest of the file is unchanged)
 
 export const getUserProfile = (userId) => getDoc(doc(usersCollection, userId));
 export const getCompany = (companyId) => getDoc(doc(companiesCollection, companyId));
