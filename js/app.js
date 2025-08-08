@@ -15,17 +15,22 @@ const appState = {
     currentView: 'list-view', currentProjectId: 'all', searchTerm: ''
 };
 
-onAuthStateChanged(auth, user => {
-    if (user && user.emailVerified) {
-        appState.user = user;
-        initialize();
-    } else {
-        // If user is not logged in or not verified, ensure they are on the login page.
-        if (!window.location.pathname.includes('login.html') && !window.location.pathname.includes('register.html')) {
-            window.location.replace('login.html');
+// **THE FIX**: Wrap all logic in a DOMContentLoaded listener.
+// This ensures that the script does not run until the entire HTML page is loaded and ready.
+document.addEventListener('DOMContentLoaded', () => {
+    onAuthStateChanged(auth, user => {
+        if (user && user.emailVerified) {
+            appState.user = user;
+            initialize();
+        } else {
+            // If user is not logged in or not verified, ensure they are on the login page.
+            if (!window.location.pathname.includes('login.html') && !window.location.pathname.includes('register.html')) {
+                window.location.replace('login.html');
+            }
         }
-    }
+    });
 });
+
 
 /**
  * Retries fetching a user profile to solve race conditions on registration.
@@ -75,12 +80,10 @@ async function initialize() {
         document.getElementById('app-container').classList.remove('hidden');
         
     } catch (error) {
-        // **DEBUGGING CHANGE**: The signOut() call is temporarily disabled.
-        // This will prevent the page from refreshing when an error occurs,
-        // so you can see the full error message in the developer console.
+        // **RESTORED**: The automatic sign-out is now re-enabled.
         console.error("Initialization Failed:", error);
         showToast(error.message || 'Could not initialize the application.', 'error');
-        // signOut(); 
+        signOut(); 
     }
 }
 
