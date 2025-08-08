@@ -109,7 +109,10 @@ async function handleRegistration(event) {
             <a href="login.html" class="success-button">Go to Login Page</a>
         `;
     } catch (error) {
-        console.error("Registration failed:", error.code, error.message);
+        // **THE FIX**: This line will now print the full Firebase error to the console,
+        // which includes the link to create the missing index.
+        console.error("Full Firebase Error:", error);
+        
         const message = error.code === 'auth/email-already-in-use'
             ? 'This email address is already registered. Please try logging in.'
             : error.message || 'An unknown error occurred.';
@@ -184,22 +187,23 @@ function checkPasswordStrength(passwordInput, strengthIndicator) {
     if (password.match(/[0-9]/)) strength++;
     if (password.match(/[^a-zA-Z0-9]/)) strength++;
 
+    if (!strengthIndicator) return;
     strengthIndicator.className = 'password-strength-indicator';
     const strengthText = strengthIndicator.querySelector('.strength-text');
 
     if (password.length === 0) {
-        strengthText.textContent = '';
+        if(strengthText) strengthText.textContent = '';
         return;
     }
 
     if (strength < 2) {
         strengthIndicator.classList.add('weak');
-        strengthText.textContent = 'Weak';
+        if(strengthText) strengthText.textContent = 'Weak';
     } else if (strength < 4) {
         strengthIndicator.classList.add('medium');
-        strengthText.textContent = 'Medium';
+        if(strengthText) strengthText.textContent = 'Medium';
     } else {
         strengthIndicator.classList.add('strong');
-        strengthText.textContent = 'Strong';
+        if(strengthText) strengthText.textContent = 'Strong';
     }
 }
