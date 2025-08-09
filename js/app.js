@@ -5,14 +5,13 @@ import { signOut } from './services/auth.js';
 import { getUserProfile } from './services/user.js';
 import { getCompany } from './services/company.js';
 import { listenToCompanyTasks } from './services/task.js';
-import { listenToCompanyProjects } from './services/project.js';
+import { listenToCompanyProjects, uploadProjectLogo, updateProject } from './services/project.js';
 import { manageUserPresence, listenToCompanyPresence } from './services/presence.js';
-import { uploadProjectLogo, updateProject } from './services/project.js';
 import { listenToCompanyChat, addChatMessage } from './services/chat.js';
 import { listenToNotifications, markNotificationsAsRead } from './services/notification.js';
 
 import { initializeI18n, setLanguage } from './i18n.js';
-import * UImanager from './ui/uiManager.js';
+import * as UImanager from './ui/uiManager.js';
 import * as taskController from './taskController.js';
 import { showToast } from './toast.js';
 
@@ -272,7 +271,7 @@ function setupUI() {
     });
 
     // Language switcher in main app
-    const languageSwitcher = document.getElementById('language-switcher');
+    const languageSwitcher = document.querySelector('.sidebar-footer .language-switcher');
     if (languageSwitcher) {
         languageSwitcher.addEventListener('click', (e) => {
             if (e.target.matches('.lang-btn')) {
