@@ -1,19 +1,40 @@
 // FILE: js/ui/sidebarRenderer.js
-import { formatLastSeen, formatTime } from './utils.js'; // <-- IMPORT FROM UTILS
+import { formatLastSeen, formatTime } from './utils.js';
 
-export const renderTeamList = (team) => {
+/**
+ * Renders the list of team members in the sidebar.
+ * @param {Array<Object>} team - An array of user objects, each representing a team member.
+ * @param {string} currentUserId - The ID of the currently logged-in user.
+ */
+export const renderTeamList = (team, currentUserId) => {
     const teamListEl = document.getElementById('team-list');
     if (!teamListEl) return;
-    teamListEl.innerHTML = '';
-    
-    team.sort((a, b) => (b.online === true ? 1 : -1) - (a.online === true ? 1 : -1) || a.nickname.localeCompare(b.nickname));
+    teamListEl.innerHTML = ''; // Clear the list before re-rendering
+
+    // Sort users: online users first, then alphabetically by nickname
+    team.sort((a, b) => {
+        if (a.online && !b.online) return -1;
+        if (!a.online && b.online) return 1;
+        return a.nickname.localeCompare(b.nickname);
+    });
 
     team.forEach(user => {
         const userEl = document.createElement('li');
         userEl.className = 'team-member';
+        
+        // Add a 'you' class if the user is the current user
+        if (user.id === currentUserId) {
+            userEl.classList.add('is-current-user');
+        }
+
         const statusClass = user.online ? 'online' : 'offline';
         const statusText = user.online ? 'Online' : formatLastSeen(user.last_changed);
         const avatarSrc = user.avatarURL || `https://placehold.co/36x36/E9ECEF/495057?text=${user.nickname.charAt(0).toUpperCase()}`;
+
+        // The "(You)" text is added here for the current user
+        const nicknameDisplay = user.id === currentUserId 
+            ? `${user.nickname} (You)` 
+            : user.nickname;
 
         userEl.innerHTML = `
             <div class="team-member-avatar">
@@ -21,7 +42,7 @@ export const renderTeamList = (team) => {
                 <span class="presence-dot ${statusClass}"></span>
             </div>
             <div class="team-member-info">
-                <span class="team-member-name">${user.nickname}</span>
+                <span class="team-member-name">${nicknameDisplay}</span>
                 <span class="team-member-status ${statusClass}">${statusText}</span>
             </div>
         `;
@@ -29,6 +50,12 @@ export const renderTeamList = (team) => {
     });
 };
 
+
+/**
+ * Renders chat messages in the team chat panel.
+ * @param {Array<Object>} messages - An array of chat message objects.
+ * @param {string} currentUserId - The ID of the currently logged-in user to identify self-messages.
+ */
 export const renderChatMessages = (messages, currentUserId) => {
     const chatMessagesEl = document.getElementById('team-chat-messages');
     if (!chatMessagesEl) return;
@@ -54,5 +81,6 @@ export const renderChatMessages = (messages, currentUserId) => {
         `;
         chatMessagesEl.appendChild(item);
     });
+    // Scroll to the bottom to show the latest message
     chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
 };
