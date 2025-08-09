@@ -1,4 +1,5 @@
-import * as firebaseService from '../services/project.js'; // Placeholder
+// FILE: js/ui/modalManager.js
+import { listenToTaskComments } from '../services/comment.js';
 import * as taskController from '../taskController.js';
 import { renderSubtasks, renderAttachments, renderComments } from './detailsRenderer.js';
 
@@ -42,9 +43,10 @@ export const openModal = (modalElement, task = null) => {
         renderSubtasks(task);
         renderAttachments(task);
         if (activeCommentsListener) activeCommentsListener();
-        // activeCommentsListener = firebaseService.listenToTaskComments(task.id, (comments) => {
-        //     renderComments(comments);
-        // });
+        
+        activeCommentsListener = listenToTaskComments(task.id, (comments) => {
+            renderComments(comments);
+        });
     }
     modalElement.classList.remove('hidden');
 };
