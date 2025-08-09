@@ -1,5 +1,4 @@
 // FILE: js/firebase-service.js
-// FIXED: No longer imports 'rtdb' as it is not initialized in the config.
 import { auth, db, storage } from './firebase-config.js';
 import {
     createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as firebaseSignOut,
@@ -124,28 +123,35 @@ export const addTask = (taskData, companyId, author) => {
     });
 }
 
+export const getTask = (taskId) => getDoc(doc(tasksCollection, taskId));
+
 export const updateTask = (taskId, updatedData) => {
     console.log('Attempting to update task:', taskId, updatedData);
-    return updateDoc(doc(tasksCollection, taskId), { ...updatedData, updatedAt: serverTimestamp() })
-        .then(result => {
-            console.log('Task update successful.');
-            return result;
-        })
-        .catch(error => {
-            console.error('Task update failed in firebase-service:', error);
-            throw error;
-        });
+    return updateDoc(doc(tasksCollection, taskId), { ...updatedData, updatedAt: serverTimestamp() });
 };
 
 export const deleteTask = (taskId) => deleteDoc(doc(tasksCollection, taskId));
+
+// FIXED: Corrected the query logic to properly filter tasks by project.
 export const listenToCompanyTasks = (companyId, projectId, callback) => {
     let q;
-    if (projectId === 'all') {
-        q = query(tasksCollection, where("companyId", "==", companyId), orderBy("createdAt", "desc"));
-    } else {
-        q = query(tasksCollection, where("companyId", "==", companyId), where("projectId", "==", projectId), orderBy("createdAt", "desc"));
+    const baseQuery = [where("companyId", "==", companyId)];
+
+    if (projectId !== 'all') {
+        // When a specific project is selected, add a filter for it.
+        baseQuery.push(where("projectId", "==", projectId));
     }
-    return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+    // Always order by creation date.
+    q = query(tasksCollection, ...baseQuery, orderBy("createdAt", "desc"));
+    
+    return onSnapshot(q, (snapshot) => {
+        const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(tasks);
+    }, (error) => {
+        console.error("Error listening to tasks: ", error);
+        // This could indicate a missing Firestore index. The error message in the
+        // console will have a link to create it.
+    });
 };
 
 // --- Comments & Activity ---
