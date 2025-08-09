@@ -10,25 +10,15 @@ export const initUIManager = (state) => {
     appState = state;
 };
 
-// --- Helper functions for formatting dates and times ---
+// --- Helper functions ---
 function formatDateTime(timestamp) {
     if (!timestamp) return '';
-    const date = timestamp.toDate();
-    return date.toLocaleString(undefined, { 
-        month: 'short', 
-        day: 'numeric',
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
-    });
+    return timestamp.toDate().toLocaleString();
 }
-
 function formatTime(timestamp) {
     if (!timestamp) return '';
-    const date = timestamp.toDate();
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
-
 function formatLastSeen(timestamp) {
     if (!timestamp) return 'Offline';
     const now = new Date();
@@ -143,6 +133,7 @@ const createTaskElement = (task) => {
     const item = document.createElement('div');
     item.className = `task-item ${task.status === 'done' ? 'done' : ''}`;
     item.dataset.id = task.id;
+    item.setAttribute('draggable', true); // For drag-and-drop
     
     item.innerHTML = `
         <input type="checkbox" class="task-checkbox" ${task.status === 'done' ? 'checked' : ''}>
@@ -150,6 +141,7 @@ const createTaskElement = (task) => {
             <div class="task-name">Loading...</div>
             <div class="task-details">
                 ${task.dueDate ? `<span>📅 ${new Date(task.dueDate).toLocaleDateString()}</span>` : ''}
+                 <span class="priority-dot priority-${task.priority || 'low'}"></span>
             </div>
         </div>
         <div class="task-actions">
@@ -242,13 +234,10 @@ export const setupModals = () => {
             const saveButton = editTaskForm.querySelector('button[type="submit"]');
             saveButton.disabled = true;
             saveButton.textContent = 'Saving...';
-
             try {
                 await taskController.handleEditTask();
-                // The toast is now handled in the controller on success
                 closeModal(taskModal);
             } catch (err) {
-                // The error toast is now handled in the controller on failure
                 console.error("UI layer caught task update error:", err);
             } finally {
                 saveButton.disabled = false;
@@ -256,6 +245,16 @@ export const setupModals = () => {
             }
         });
     }
+
+    // NEW: AI Subtask button
+    document.getElementById('ai-subtask-btn').addEventListener('click', taskController.generateSubtasksWithAI);
+    
+    // NEW: Attachment button
+    document.getElementById('add-attachment-btn').addEventListener('click', () => {
+        document.getElementById('add-attachment-input').click();
+    });
+    document.getElementById('add-attachment-input').addEventListener('change', taskController.handleAttachmentUpload);
+
 
     const copyInviteBtn = document.getElementById('copy-invite-link-button');
     if (copyInviteBtn) {
@@ -325,6 +324,7 @@ export const openModal = (modalElement, task = null) => {
         });
         
         renderSubtasks(task);
+        renderAttachments(task);
         if (activeCommentsListener) activeCommentsListener();
         activeCommentsListener = firebaseService.listenToTaskComments(task.id, (comments) => {
             renderComments(comments);
@@ -362,6 +362,30 @@ const renderSubtasks = (task) => {
                 taskController.deleteSubtask(task.id, index);
             });
             subtasksList.appendChild(item);
+        });
+    }
+};
+
+// NEW: Render file attachments
+const renderAttachments = (task) => {
+    const attachmentsList = document.getElementById('attachments-list');
+    if (!attachmentsList) return;
+    attachmentsList.innerHTML = '';
+    if(task.attachments && task.attachments.length > 0) {
+        task.attachments.forEach(attachment => {
+            const item = document.createElement('div');
+            item.className = 'attachment-item';
+            item.innerHTML = `
+                <a href="${attachment.url}" target="_blank">${attachment.name}</a>
+                <span class="attachment-size">(${(attachment.size / 1024).toFixed(1)} KB)</span>
+                <button class="delete-attachment-btn">&times;</button>
+            `;
+            item.querySelector('.delete-attachment-btn').addEventListener('click', () => {
+                if(confirm(`Are you sure you want to delete the attachment: ${attachment.name}?`)) {
+                    firebaseService.deleteAttachment(task.id, attachment);
+                }
+            });
+            attachmentsList.appendChild(item);
         });
     }
 };
@@ -449,55 +473,178 @@ async function renderTranslatedText(element, text, originalLanguage) {
 
 
 export const setupEventListeners = () => {
-    const prevMonthBtn = document.getElementById('prev-month');
-    if (prevMonthBtn) {
-        prevMonthBtn.addEventListener('click', () => {
-            currentDate.setMonth(currentDate.getMonth() - 1);
-            renderCalendarView(appState.tasks);
-        });
-    }
-    const nextMonthBtn = document.getElementById('next-month');
-    if (nextMonthBtn) {
-        nextMonthBtn.addEventListener('click', () => {
-            currentDate.setMonth(currentDate.getMonth() + 1);
-            renderCalendarView(appState.tasks);
-        });
-    }
-    if (!kanbanView) return;
+    // Calendar buttons
+    document.getElementById('prev-month')?.addEventListener('click', () => {
+        currentDate.setMonth(currentDate.getMonth() - 1);
+        renderCalendarView(appState.tasks);
+    });
+    document.getElementById('next-month')?.addEventListener('click', () => {
+        currentDate.setMonth(currentDate.getMonth() + 1);
+        renderCalendarView(appState.tasks);
+    });
+
+    // Main drag-and-drop handler
+    const mainContent = document.querySelector('main');
+    if (!mainContent) return;
+
     let draggedItem = null;
-    kanbanView.addEventListener('dragstart', (e) => {
+    mainContent.addEventListener('dragstart', (e) => {
         if (e.target.classList.contains('task-item')) {
             draggedItem = e.target;
             setTimeout(() => e.target.classList.add('dragging'), 0);
         }
     });
-    kanbanView.addEventListener('dragend', () => {
+
+    mainContent.addEventListener('dragend', () => {
         if (draggedItem) {
             draggedItem.classList.remove('dragging');
             draggedItem = null;
         }
     });
-    kanbanView.addEventListener('dragover', (e) => {
+    
+    mainContent.addEventListener('dragover', (e) => {
         e.preventDefault();
-        const column = e.target.closest('.kanban-column');
-        if (column) {
-            column.classList.add('drag-over');
+        const target = e.target;
+        // For Kanban view
+        const column = target.closest('.kanban-column');
+        if (column) column.classList.add('drag-over');
+
+        // For List view
+        const taskList = target.closest('.task-list');
+        if(taskList) {
+            const afterElement = getDragAfterElement(taskList, e.clientY);
+            const currentlyDragged = document.querySelector('.dragging');
+            if (afterElement == null) {
+                taskList.appendChild(currentlyDragged);
+            } else {
+                taskList.insertBefore(currentlyDragged, afterElement);
+            }
         }
     });
-    kanbanView.addEventListener('dragleave', (e) => {
+
+    mainContent.addEventListener('dragleave', (e) => {
+        const column = e.target.closest('.kanban-column');
+        if (column) column.classList.remove('drag-over');
+    });
+
+    mainContent.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if(!draggedItem) return;
+
+        // Kanban Drop Logic
         const column = e.target.closest('.kanban-column');
         if (column) {
-            column.classList.remove('drag-over');
-        }
-    });
-    kanbanView.addEventListener('drop', (e) => {
-        e.preventDefault();
-        const column = e.target.closest('.kanban-column');
-        if (column && draggedItem) {
             column.classList.remove('drag-over');
             const newStatus = column.dataset.status;
             const taskId = draggedItem.dataset.id;
             taskController.updateTaskStatus(taskId, newStatus);
         }
+
+        // List View Drop Logic
+        const taskList = e.target.closest('.task-list');
+        if(taskList) {
+            const taskElements = [...taskList.querySelectorAll('.task-item:not(.dragging)')];
+            const newIndex = taskElements.indexOf(draggedItem);
+            // Here you would implement the logic to update the `order` field in Firestore
+            // This requires getting the `order` of the tasks before and after the drop position
+            console.log("Dropped task", draggedItem.dataset.id, "at new visual index", newIndex);
+            // This is a complex operation and for now we will just log the intended action
+        }
     });
+};
+
+function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.task-item:not(.dragging)')];
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+// NEW: Command Palette
+export const openCommandPalette = () => {
+    const modal = document.getElementById('command-palette-modal');
+    modal.classList.remove('hidden');
+    const input = document.getElementById('command-palette-input');
+    input.value = '';
+    input.focus();
+    renderCommandPaletteResults('', appState);
+};
+
+export const renderCommandPaletteResults = (searchTerm, state) => {
+    const resultsContainer = document.getElementById('command-palette-results');
+    resultsContainer.innerHTML = '';
+
+    if(!searchTerm) {
+        resultsContainer.innerHTML = '<div class="command-palette-placeholder">Start typing to search...</div>';
+        return;
+    }
+
+    // Search Tasks
+    const taskResults = state.tasks.filter(t => t.name.toLowerCase().includes(searchTerm));
+    if(taskResults.length > 0) {
+        resultsContainer.innerHTML += `<div class="command-palette-category">Tasks</div>`;
+        taskResults.forEach(task => {
+            const item = document.createElement('div');
+            item.className = 'command-palette-item';
+            item.innerHTML = `<span>${task.name}</span>`;
+            item.addEventListener('click', () => {
+                openModal(document.getElementById('task-modal'), task);
+                closeModal(document.getElementById('command-palette-modal'));
+            });
+            resultsContainer.appendChild(item);
+        });
+    }
+    // Search Projects
+    const projectResults = state.projects.filter(p => p.name.toLowerCase().includes(searchTerm));
+     if(projectResults.length > 0) {
+        resultsContainer.innerHTML += `<div class="command-palette-category">Projects</div>`;
+        projectResults.forEach(project => {
+            const item = document.createElement('div');
+            item.className = 'command-palette-item';
+            item.innerHTML = `<span>${project.name}</span>`;
+            item.addEventListener('click', () => {
+                // This would need a function in app.js to switch project view
+                console.log(`Maps to project: ${project.id}`);
+                closeModal(document.getElementById('command-palette-modal'));
+            });
+            resultsContainer.appendChild(item);
+        });
+    }
+};
+
+// NEW: Notifications
+export const updateNotificationBell = (notifications) => {
+    const countEl = document.getElementById('notification-count');
+    const dropdownEl = document.getElementById('notification-dropdown');
+    dropdownEl.innerHTML = '';
+
+    const unreadCount = notifications.filter(n => !n.isRead).length;
+
+    if (unreadCount > 0) {
+        countEl.textContent = unreadCount;
+        countEl.classList.remove('hidden');
+    } else {
+        countEl.classList.add('hidden');
+    }
+    
+    if(notifications.length === 0) {
+        dropdownEl.innerHTML = '<div class="notification-item">No new notifications</div>';
+    } else {
+        notifications.slice(0, 10).forEach(notif => {
+            const item = document.createElement('div');
+            item.className = `notification-item ${notif.isRead ? 'read' : ''}`;
+            item.innerHTML = `<p>${notif.text}</p><span class="timestamp">${formatLastSeen(notif.createdAt)}</span>`;
+            item.addEventListener('click', () => {
+                // Could navigate to the task here in the future
+                console.log('Clicked notification for task:', notif.taskId);
+            });
+            dropdownEl.appendChild(item);
+        });
+    }
 };
