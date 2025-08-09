@@ -1066,3 +1066,100 @@ main { padding: 2rem; overflow-y: auto; }
     height: 32px;
     border-radius: 50%;
 }
+
+/* --- Styles for Expanded Task Items --- */
+
+.task-item {
+    cursor: default; /* Change cursor since the whole item isn't draggable anymore */
+}
+
+.task-item-main {
+    cursor: grab; /* Make the main part draggable */
+}
+
+.task-item.dragging {
+    opacity: 0.5;
+    background: #e9ecef;
+}
+
+.task-name {
+    font-weight: 600;
+    font-size: 1.1rem;
+    cursor: pointer; /* Indicates the name is clickable */
+}
+
+.task-description {
+    font-size: 0.9rem;
+    color: var(--subtle-text-color);
+    margin: 0.25rem 0 0.75rem;
+    white-space: pre-wrap; /* Respects line breaks in the description */
+    padding-left: 2.5rem; /* Aligns with task name */
+}
+
+.inline-subtask-section {
+    margin: 1rem 0 0.5rem 2.5rem; /* Aligns subtasks under the description */
+    border-top: 1px solid var(--border-color);
+    padding-top: 1rem;
+}
+
+.inline-subtask-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.inline-subtask-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+}
+
+.inline-subtask-item.completed span {
+    text-decoration: line-through;
+    color: var(--subtle-text-color);
+}
+
+.inline-subtask-item input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary-color);
+    flex-shrink: 0;
+}
+
+.inline-subtask-item .delete-inline-subtask {
+    background: none;
+    border: none;
+    color: var(--subtle-text-color);
+    cursor: pointer;
+    visibility: hidden; /* Hide by default */
+    margin-left: auto;
+    font-size: 1.2rem;
+    padding: 0 0.25rem;
+}
+
+.inline-subtask-item:hover .delete-inline-subtask {
+    visibility: visible; /* Show on hover */
+}
+
+.inline-add-subtask {
+    margin-top: 0.75rem;
+}
+
+.inline-add-subtask input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.inline-add-subtask input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.2);
+}
