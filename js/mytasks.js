@@ -1,6 +1,7 @@
 import { auth } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js';
-import { getTasksAssignedToUser, signOut } from './firebase-service.js';
+import { getTasksAssignedToUser, signOut } from './services/task.js';
+import { getTranslatedString } from './i18n.js';
 
 onAuthStateChanged(auth, async (user) => {
     if (user) {
@@ -12,19 +13,25 @@ onAuthStateChanged(auth, async (user) => {
 
 async function renderAssignedTasks(userId) {
     const container = document.getElementById('my-tasks-container');
-    container.innerHTML = '<div class="loader">Loading your tasks...</div>';
+    container.innerHTML = '<div class="skeleton-task"></div><div class="skeleton-task"></div><div class="skeleton-task"></div>';
 
     try {
         const tasks = await getTasksAssignedToUser(userId);
 
         if (tasks.length === 0) {
-            container.innerHTML = '<p>You have no tasks assigned to you. Great job!</p>';
+            container.innerHTML = `
+                <div class="empty-state">
+                    <img src="img/no-tasks.svg" alt="No tasks" class="empty-state-img">
+                    <h3>${getTranslatedString('noTasks')}</h3>
+                    <p>${getTranslatedString('noTasksCallToAction')}</p>
+                    <a href="index.html" class="btn-primary">Create Task</a>
+                </div>
+            `;
             return;
         }
 
-        container.innerHTML = ''; // Clear loader
+        container.innerHTML = ''; 
 
-        // Group tasks by company
         const tasksByCompany = tasks.reduce((acc, task) => {
             const companyName = task.companyName || 'Unknown Company';
             if (!acc[companyName]) {
