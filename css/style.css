@@ -23,6 +23,7 @@ body {
     font-size: 16px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overflow: hidden; /* Prevent body scrolling */
 }
 
 .hidden { display: none !important; }
@@ -134,14 +135,21 @@ hr { border: none; border-top: 1px solid var(--border-color); margin: 1rem 0; }
 #logout-button { background: none; border: 1px solid var(--subtle-text-color); color: var(--subtle-text-color); }
 #logout-button:hover { background-color: var(--subtle-text-color); color: white; }
 .main-layout { display: grid; grid-template-columns: 260px 1fr; flex-grow: 1; overflow: hidden; }
+
+/* FIX: Sidebar scrolling behavior */
 aside {
     background: #FCFCFC;
     padding: 1.5rem;
     border-right: 1px solid var(--border-color);
-    overflow-y: auto;
     display: flex;
     flex-direction: column;
+    max-height: 100vh; /* Ensure sidebar doesn't exceed viewport height */
+    overflow: hidden; /* Hide the main scrollbar */
 }
+aside nav, aside .projects-panel, aside .team-panel, aside .sidebar-footer {
+    flex-shrink: 0; /* Prevent these sections from shrinking */
+}
+
 aside h3 {
     font-size: 0.8rem;
     font-weight: 600;
@@ -247,11 +255,12 @@ main { padding: 2rem; overflow-y: auto; }
 .sidebar-footer { margin-top: auto; padding-top: 1.5rem; border-top: 1px solid var(--border-color); }
 .settings-link { color: var(--subtle-text-color); text-decoration: none; font-weight: 500; }
 
-.task-item { display: flex; flex-direction: column; padding: 1rem; background: var(--surface-color); border-radius: 6px; box-shadow: var(--shadow); transition: box-shadow 0.2s; cursor: grab; }
+/* FIX: Task item layout */
+.task-item { display: flex; flex-direction: column; padding: 1rem; background: var(--surface-color); border-radius: 8px; box-shadow: var(--shadow); transition: box-shadow 0.2s; cursor: grab; }
 .task-item-main { display: flex; align-items: center; gap: 1rem; }
 .task-item.done .task-name { text-decoration: line-through; color: var(--subtle-text-color); }
 .task-item:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-.task-item .task-checkbox { width: 20px; height: 20px; cursor: pointer; accent-color: var(--primary-color); }
+.task-item .task-checkbox { width: 20px; height: 20px; cursor: pointer; accent-color: var(--primary-color); flex-shrink: 0; }
 .task-content { flex-grow: 1; }
 .task-name { font-weight: 500; }
 .task-details { display: flex; gap: 1rem; font-size: 0.85rem; color: var(--subtle-text-color); margin-top: 0.25rem; align-items: center; }
@@ -283,7 +292,7 @@ main { padding: 2rem; overflow-y: auto; }
 .hamburger-menu { display: none; flex-direction: column; justify-content: space-around; width: 30px; height: 30px; background: transparent; border: none; cursor: pointer; padding: 0; z-index: 1100; }
 .hamburger-menu span { width: 30px; height: 3px; background-color: var(--text-color); border-radius: 10px; transition: all 0.3s linear; }
 
-/* NEW: Team Chat Styles */
+/* FIX: Team Chat Styles for scrolling */
 #team-chat-panel {
     margin-top: 1.5rem;
     border-top: 1px solid var(--border-color);
@@ -291,12 +300,13 @@ main { padding: 2rem; overflow-y: auto; }
     display: flex;
     flex-direction: column;
     flex-grow: 1; /* Allows chat to take remaining space */
-    min-height: 200px; /* Ensures chat has a minimum height */
+    min-height: 150px; /* Ensures chat has a minimum height */
+    overflow: hidden; /* Important: contain children */
 }
 
 #team-chat-messages {
     flex-grow: 1;
-    overflow-y: auto;
+    overflow-y: auto; /* This part will scroll */
     padding: 0.5rem;
     display: flex;
     flex-direction: column;
@@ -310,7 +320,7 @@ main { padding: 2rem; overflow-y: auto; }
     max-width: 90%;
 }
 
-.chat-message .avatar {
+.chat-message .chat-avatar {
     width: 32px;
     height: 32px;
     flex-shrink: 0;
@@ -358,6 +368,7 @@ main { padding: 2rem; overflow-y: auto; }
     display: flex;
     border-top: 1px solid var(--border-color);
     padding-top: 0.75rem;
+    flex-shrink: 0;
 }
 
 #team-chat-input {
@@ -928,7 +939,6 @@ main { padding: 2rem; overflow-y: auto; }
     border-radius: 6px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
     text-decoration: none;
 }
 .header-btn:hover {
