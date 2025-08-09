@@ -11,18 +11,14 @@ import { showToast } from './toast.js';
 
 let currentUser = null;
 
-// NEW: Added a retry function for fetching the user profile to prevent race conditions.
 const getUserProfileWithRetry = async (userId, retries = 3, delay = 1000) => {
     for (let i = 0; i < retries; i++) {
         const profileSnap = await getUserProfile(userId);
-        // We also check if the companies array exists, as that's the critical piece of data.
         if (profileSnap.exists() && profileSnap.data().companies) {
             return profileSnap;
         }
-        // Wait before the next attempt
         await new Promise(res => setTimeout(res, delay));
     }
-    // If it still fails, get the latest version one last time.
     return getUserProfile(userId);
 };
 
@@ -30,16 +26,14 @@ const getUserProfileWithRetry = async (userId, retries = 3, delay = 1000) => {
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         currentUser = user;
-        // UPDATED: Using the new retry function for more robust data fetching.
         const profileSnap = await getUserProfileWithRetry(user.uid); 
         if (profileSnap.exists()) {
             const profile = profileSnap.data();
             updateUserInfo(profile);
             renderCompanyCards(profile.companies || []);
         } else {
-            // This case handles if the profile truly doesn't exist after multiple attempts.
             showToast("Could not load your user profile.", "error");
-            renderCompanyCards([]); // Render the "not a member" state.
+            renderCompanyCards([]);
         }
     } else {
         window.location.replace('login.html');
@@ -65,18 +59,25 @@ async function renderCompanyCards(companyMemberships) {
         return;
     }
 
-    const cardPromises = companyMemberships.map(membership => getCompanyDashboardData(membership.companyId));
-    const companiesData = await Promise.all(cardPromises);
+    // NEW: Added a try...catch block to handle potential errors during data fetching.
+    try {
+        const cardPromises = companyMemberships.map(membership => getCompanyDashboardData(membership.companyId));
+        const companiesData = await Promise.all(cardPromises);
 
-    container.innerHTML = ''; // Clear loader
+        container.innerHTML = ''; // Clear loader
 
-    companiesData.forEach((data, index) => {
-        if (data.company) {
-            const membership = companyMemberships[index];
-            const card = createCompanyCard(data, membership);
-            container.appendChild(card);
-        }
-    });
+        companiesData.forEach((data, index) => {
+            if (data.company) {
+                const membership = companyMemberships[index];
+                const card = createCompanyCard(data, membership);
+                container.appendChild(card);
+            }
+        });
+    } catch (error) {
+        console.error("Failed to render company cards:", error);
+        container.innerHTML = `<p class="error">An error occurred while loading company data. Please check the console and try refreshing the page.</p>`;
+        showToast("Error loading company data. You may need to create a database index.", "error");
+    }
 }
 
 function createCompanyCard(data, membership) {
@@ -86,7 +87,6 @@ function createCompanyCard(data, membership) {
 
     const { company, tasks, members } = data;
     
-    // Calculations for enhanced UI
     const totalTasks = tasks.length;
     const completedTasks = tasks.filter(t => t.status === 'done').length;
     const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
@@ -153,7 +153,7 @@ document.getElementById('join-company-form').addEventListener('submit', async (e
     try {
         await joinCompanyWithReferralId(currentUser, referralId);
         showToast('Successfully joined company!', 'success');
-        location.reload(); // Reload to show the new company
+        location.reload();
     } catch (error) {
         showToast(error.message, 'error');
     }
