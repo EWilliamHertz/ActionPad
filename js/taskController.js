@@ -26,7 +26,7 @@ export const setupProjectForm = (state) => {
                 })
                 .catch(err => {
                     console.error("Error adding project:", err);
-                    showToast('Could not create project.', 'error');
+                    showToast(`Error: ${err.message}`, 'error');
                 });
         }
     });
@@ -57,7 +57,7 @@ const handleAddTask = (text) => {
         })
         .catch(err => {
             console.error("Error adding task:", err)
-            showToast('Failed to add task.', 'error');
+            showToast(`Error: ${err.message}`, 'error');
         });
 };
 
@@ -75,11 +75,13 @@ export const handleEditTask = () => {
         assignedTo: assignees,
         projectId: document.getElementById('edit-task-project').value
     };
+
     firebaseService.updateTask(taskId, taskData)
         .then(() => showToast('Task updated!', 'success'))
         .catch(err => {
-            console.error("Error updating task:", err)
-            showToast('Failed to update task.', 'error');
+            console.error("Error updating task:", err);
+            // FIX: Provide detailed error feedback to the user.
+            showToast(`Update failed: ${err.message}`, 'error');
         });
 };
 
@@ -90,16 +92,19 @@ export const toggleTaskStatus = (taskId, isDone) => {
 
 export const updateTaskStatus = (taskId, newStatus) => {
     firebaseService.updateTask(taskId, { status: newStatus })
-        .catch(err => console.error("Error updating task status:", err));
+        .catch(err => {
+            console.error("Error updating task status:", err);
+            showToast(`Error: ${err.message}`, 'error');
+        });
 };
 
 export const deleteTask = (taskId) => {
-    if (confirm("Are you sure you want to delete this task?")) {
+    if (confirm("Are you sure you want to delete this task? Only the original creator can do this.")) {
         firebaseService.deleteTask(taskId)
             .then(() => showToast('Task deleted.', 'success'))
             .catch(err => {
                 console.error("Error deleting task:", err)
-                showToast('Failed to delete task.', 'error');
+                showToast(`Deletion failed: ${err.message}`, 'error');
             });
     }
 };
