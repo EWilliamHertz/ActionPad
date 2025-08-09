@@ -133,16 +133,16 @@ function setupListeners() {
 
     appState.presenceListener = listenToCompanyPresence(appState.company.id, (users) => {
         appState.team = users;
-        UImanager.renderTeamList(appState.team);
+        // UImanager.renderTeamList(appState.team);
     });
 
     appState.chatListener = listenToCompanyChat(appState.company.id, (messages) => {
-        UImanager.renderChatMessages(messages, appState.user.uid);
+        // UImanager.renderChatMessages(messages, appState.user.uid);
     });
 
     appState.notificationsListener = listenToNotifications(appState.user.uid, (notifications) => {
         appState.notifications = notifications;
-        UImanager.updateNotificationBell(notifications);
+        // UImanager.updateNotificationBell(notifications);
     });
 }
 
@@ -197,8 +197,8 @@ function setupUI() {
     document.getElementById('view-switcher').addEventListener('click', (e) => {
         if (e.target.matches('.view-btn')) {
             appState.currentView = e.target.dataset.view;
-            UImanager.switchView(appState.currentView);
-            UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
+            // UImanager.switchView(appState.currentView);
+            // UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
         }
     });
 
@@ -220,7 +220,7 @@ function setupUI() {
         const currentPath = window.location.href;
         const basePath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
         const inviteLink = `${basePath}register.html?ref=${appState.company.referralId}`;
-        UImanager.openInviteModal(inviteLink);
+        // UImanager.openInviteModal(inviteLink);
     });
 
     document.getElementById('hamburger-menu').addEventListener('click', () => {
@@ -229,7 +229,7 @@ function setupUI() {
 
     document.getElementById('search-bar').addEventListener('input', (e) => {
         appState.searchTerm = e.target.value;
-        UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
+        // UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
     });
 
     document.getElementById('team-chat-form').addEventListener('submit', (e) => {
@@ -252,12 +252,12 @@ function setupUI() {
     document.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
             e.preventDefault();
-            UImanager.openCommandPalette();
+            // UImanager.openCommandPalette();
         }
     });
 
     document.getElementById('command-palette-input').addEventListener('input', (e) => {
-        UImanager.renderCommandPaletteResults(e.target.value.toLowerCase(), appState);
+        // UImanager.renderCommandPaletteResults(e.target.value.toLowerCase(), appState);
     });
 
     // NEW: Notification Bell Listener
@@ -284,8 +284,8 @@ function setupUI() {
     taskController.setupProjectForm(appState);
     taskController.setupTaskForm();
 
-    UImanager.setupModals();
-    UImanager.setupEventListeners();
+    // UImanager.setupModals();
+    // UImanager.setupEventListeners();
 }
 
 function filterTasks(tasks, searchTerm) {
