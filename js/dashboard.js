@@ -11,14 +11,35 @@ import { showToast } from './toast.js';
 
 let currentUser = null;
 
+// NEW: Added a retry function for fetching the user profile to prevent race conditions.
+const getUserProfileWithRetry = async (userId, retries = 3, delay = 1000) => {
+    for (let i = 0; i < retries; i++) {
+        const profileSnap = await getUserProfile(userId);
+        // We also check if the companies array exists, as that's the critical piece of data.
+        if (profileSnap.exists() && profileSnap.data().companies) {
+            return profileSnap;
+        }
+        // Wait before the next attempt
+        await new Promise(res => setTimeout(res, delay));
+    }
+    // If it still fails, get the latest version one last time.
+    return getUserProfile(userId);
+};
+
+
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         currentUser = user;
-        const profileSnap = await getUserProfile(user.uid);
+        // UPDATED: Using the new retry function for more robust data fetching.
+        const profileSnap = await getUserProfileWithRetry(user.uid); 
         if (profileSnap.exists()) {
             const profile = profileSnap.data();
             updateUserInfo(profile);
             renderCompanyCards(profile.companies || []);
+        } else {
+            // This case handles if the profile truly doesn't exist after multiple attempts.
+            showToast("Could not load your user profile.", "error");
+            renderCompanyCards([]); // Render the "not a member" state.
         }
     } else {
         window.location.replace('login.html');
@@ -69,7 +90,7 @@ function createCompanyCard(data, membership) {
     const totalTasks = tasks.length;
     const completedTasks = tasks.filter(t => t.status === 'done').length;
     const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
-    const lastActivity = tasks.length > 0 ? new Date(tasks[0].updatedAt.seconds * 1000).toLocaleDateString() : 'N/A';
+    const lastActivity = tasks.length > 0 && tasks[0].updatedAt ? new Date(tasks[0].updatedAt.seconds * 1000).toLocaleDateString() : 'N/A';
     const memberAvatars = members.slice(0, 5).map(member => {
         const avatarSrc = member.avatarURL || `https://placehold.co/32x32/E9ECEF/495057?text=${member.nickname.charAt(0).toUpperCase()}`;
         return `<img src="${avatarSrc}" alt="${member.nickname}" class="avatar-small">`;
