@@ -37,7 +37,16 @@ const translations = {
         inviteModalTitle: "Invite Your Teammates",
         inviteModalDesc: "Share this link with your team. When they sign up, they'll automatically join your company.",
         copyLink: "Copy Link",
-        linkCopied: "Link copied to clipboard!"
+        linkCopied: "Link copied to clipboard!",
+        myActivity: "My Activity",
+        upcomingDeadlines: "Upcoming Deadlines",
+        taskCompletion: "Task Completion",
+        noTasks: "You have no tasks assigned to you. Great job!",
+        noTasksCallToAction: "Create a new task to get started.",
+        invalidCredentials: "Invalid credentials. Please check your email and password.",
+        emailInUse: "This email address is already registered. Please try logging in.",
+        genericError: "An unknown error occurred.",
+        requiredIndex: "A database index is required. Please check the developer console for a link to create it."
     },
     sv: {
         loginTitle: "Logga in - ActionPad",
@@ -74,7 +83,16 @@ const translations = {
         inviteModalTitle: "Bjud in dina kollegor",
         inviteModalDesc: "Dela den här länken med ditt team. När de registrerar sig går de automatiskt med i ditt företag.",
         copyLink: "Kopiera länk",
-        linkCopied: "Länk kopierad till urklipp!"
+        linkCopied: "Länk kopierad till urklipp!",
+        myActivity: "Min aktivitet",
+        upcomingDeadlines: "Kommande deadlines",
+        taskCompletion: "Slutförda uppgifter",
+        noTasks: "Du har inga tilldelade uppgifter. Bra jobbat!",
+        noTasksCallToAction: "Skapa en ny uppgift för att komma igång.",
+        invalidCredentials: "Ogiltiga uppgifter. Kontrollera din e-post och lösenord.",
+        emailInUse: "Den här e-postadressen är redan registrerad. Försök att logga in.",
+        genericError: "Ett okänt fel inträffade.",
+        requiredIndex: "Ett databasindex krävs. Kontrollera utvecklarkonsolen för en länk för att skapa det."
     },
     zh: {
         loginTitle: "登录 - ActionPad",
@@ -111,11 +129,23 @@ const translations = {
         inviteModalTitle: "邀请您的队友",
         inviteModalDesc: "与您的团队分享此链接。他们注册后，将自动加入您的公司。",
         copyLink: "复制链接",
-        linkCopied: "链接已复制到剪贴板！"
+        linkCopied: "链接已复制到剪贴板！",
+        myActivity: "我的动态",
+        upcomingDeadlines: "即将截止",
+        taskCompletion: "任务完成情况",
+        noTasks: "您没有分配任何任务。干得好！",
+        noTasksCallToAction: "创建一个新任务以开始。",
+        invalidCredentials: "无效的凭据。请检查您的电子邮件和密码。",
+        emailInUse: "此电子邮件地址已被注册。请尝试登录。",
+        genericError: "发生未知错误。",
+        requiredIndex: "需要数据库索引。请检查开发者控制台以获取创建链接。"
     }
 };
 
-const setLanguage = (language) => {
+let currentLanguage = 'en';
+
+export const setLanguage = (language) => {
+    currentLanguage = language;
     document.querySelectorAll('[data-i18n]').forEach(element => {
         const key = element.getAttribute('data-i18n');
         if (translations[language] && translations[language][key]) {
@@ -129,6 +159,10 @@ const setLanguage = (language) => {
         btn.classList.toggle('active', btn.dataset.lang === language);
     });
 };
+
+export const getTranslatedString = (key) => {
+    return translations[currentLanguage][key] || key;
+}
 
 export const initializeI18n = () => {
     const languageSwitcher = document.querySelector('.language-switcher');
