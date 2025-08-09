@@ -9,13 +9,13 @@ export const switchView = (viewId) => {
     document.querySelector(`.view-btn[data-view="${viewId}"]`)?.classList.add('active');
 };
 
-export const renderView = (viewId, tasks) => {
+export const renderView = (viewId, tasks, state) => {
     switch(viewId) {
         case 'list-view':
-            renderListView(tasks);
+            renderListView(tasks, state);
             break;
         case 'kanban-view':
-            renderKanbanView(tasks);
+            renderKanbanView(tasks, state);
             break;
         case 'calendar-view':
             // renderCalendarView(tasks); // This can be enabled when the function is ready
