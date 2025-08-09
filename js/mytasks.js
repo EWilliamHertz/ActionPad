@@ -1,6 +1,8 @@
+// FILE: js/mytasks.js
 import { auth } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js';
-import { getTasksAssignedToUser, signOut } from './services/task.js';
+import { getTasksAssignedToUser } from './services/task.js';
+import { signOut } from './services/auth.js';
 import { getTranslatedString } from './i18n.js';
 
 onAuthStateChanged(auth, async (user) => {
