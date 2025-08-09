@@ -1,5 +1,6 @@
 // FILE: js/firebase-service.js
-import { auth, db, rtdb, storage } from './firebase-config.js';
+// REMOVED: rtdb is no longer imported or used.
+import { auth, db, storage } from './firebase-config.js';
 import {
     createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as firebaseSignOut,
     updatePassword, EmailAuthProvider, reauthenticateWithCredential, 
@@ -11,7 +12,7 @@ import {
     query, where, serverTimestamp, setDoc, onSnapshot, orderBy
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js";
-import { ref, onValue, onDisconnect, set as rtSet, serverTimestamp as rtServerTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+// REMOVED: All Realtime Database imports are gone.
 
 const usersCollection = collection(db, 'users');
 const companiesCollection = collection(db, 'companies');
@@ -19,22 +20,19 @@ const tasksCollection = collection(db, 'tasks');
 const projectsCollection = collection(db, 'projects');
 const chatCollection = collection(db, 'team_chat');
 
-// --- Gemini API Key ---
 const GEMINI_API_KEY = "AIzaSyC9VG3fpf0VAsKfWgJE60lGWcmH6qObCN0";
 
 // --- Authentication & User Management ---
-
 export const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
-
 export const sendVerificationEmail = (user) => firebaseSendEmailVerification(user);
-
 export const sendPasswordReset = (email) => firebaseSendPasswordResetEmail(auth, email);
 
 export const signOut = () => {
     const user = auth.currentUser;
     if (user) {
-        const userStatusFirestoreRef = doc(db, '/users/' + user.uid);
-        updateDoc(userStatusFirestoreRef, { online: false, last_changed: serverTimestamp() }).catch(err => console.error("Error signing out:", err));
+        const userStatusFirestoreRef = doc(db, 'users', user.uid);
+        // Set user to offline in Firestore on manual sign-out.
+        updateDoc(userStatusFirestoreRef, { online: false, last_changed: serverTimestamp() });
     }
     return firebaseSignOut(auth);
 };
@@ -44,32 +42,27 @@ export const registerUser = async (userData) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
     await sendVerificationEmail(user);
-    try {
-        let companyId;
-        let finalCompanyName = companyName;
-        if (referralId) {
-            const q = query(companiesCollection, where("referralId", "==", Number(referralId)));
-            const querySnapshot = await getDocs(q);
-            if (!querySnapshot.empty) {
-                const companyDoc = querySnapshot.docs[0];
-                companyId = companyDoc.id;
-                finalCompanyName = companyDoc.data().name;
-            } else {
-                throw new Error("Invalid Referral ID. Company not found.");
-            }
+    let companyId;
+    let finalCompanyName = companyName;
+    if (referralId) {
+        const q = query(companiesCollection, where("referralId", "==", Number(referralId)));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+            const companyDoc = querySnapshot.docs[0];
+            companyId = companyDoc.id;
+            finalCompanyName = companyDoc.data().name;
         } else {
-            const newCompanyRef = await addDoc(companiesCollection, { name: companyName, referralId: Math.floor(100000 + Math.random() * 900000), createdAt: serverTimestamp() });
-            companyId = newCompanyRef.id;
+            throw new Error("Invalid Referral ID. Company not found.");
         }
-        await setDoc(doc(usersCollection, user.uid), {
-            fullName, nickname, email, companyRole, companyId,
-            companyName: finalCompanyName, online: false, last_changed: serverTimestamp()
-        });
-        return user;
-    } catch (error) {
-        console.error("Error creating user profile in Firestore:", error);
-        throw error; 
+    } else {
+        const newCompanyRef = await addDoc(companiesCollection, { name: companyName, referralId: Math.floor(100000 + Math.random() * 900000), createdAt: serverTimestamp() });
+        companyId = newCompanyRef.id;
     }
+    await setDoc(doc(usersCollection, user.uid), {
+        fullName, nickname, email, companyRole, companyId,
+        companyName: finalCompanyName, online: false, last_changed: serverTimestamp()
+    });
+    return user;
 };
 
 export const getUserProfile = (userId) => getDoc(doc(usersCollection, userId));
@@ -88,27 +81,15 @@ export const updateUserPassword = async (currentPassword, newPassword) => {
     await updatePassword(user, newPassword);
 };
 
-// --- Presence Management ---
-export const manageUserPresence = (user) => {
-    const userStatusDatabaseRef = ref(rtdb, '/status/' + user.uid);
-    const userStatusFirestoreRef = doc(db, '/users/' + user.uid);
+// --- FIXED: Presence Management (Firestore-only) ---
+export const manageUserPresence = async (user) => {
+    const userStatusFirestoreRef = doc(db, 'users', user.uid);
+    // Set user to online when the app initializes
+    await updateDoc(userStatusFirestoreRef, { online: true, last_changed: serverTimestamp() });
 
-    const isOfflineForDatabase = { state: 'offline', last_changed: rtServerTimestamp() };
-    const isOnlineForDatabase = { state: 'online', last_changed: rtServerTimestamp() };
-    
-    const isOfflineForFirestore = { online: false, last_changed: serverTimestamp() };
-    const isOnlineForFirestore = { online: true, last_changed: serverTimestamp() };
-
-    onValue(ref(rtdb, '.info/connected'), (snapshot) => {
-        if (snapshot.val() === false) {
-            updateDoc(userStatusFirestoreRef, isOfflineForFirestore).catch(()=>{});
-            return;
-        }
-        onDisconnect(userStatusDatabaseRef).set(isOfflineForDatabase).then(() => {
-            rtSet(userStatusDatabaseRef, isOnlineForDatabase);
-            updateDoc(userStatusFirestoreRef, isOnlineForFirestore).catch(()=>{});
-        });
-    });
+    // The signOut function already handles setting the user to offline.
+    // For handling browser close, a more advanced solution using beacon API or service workers
+    // would be needed, but this covers the primary online/offline cases.
 };
 
 export const listenToCompanyPresence = (companyId, callback) => {
@@ -144,12 +125,26 @@ export const addTask = (taskData, companyId, author) => {
         assignedTo: [], 
         subtasks: [], 
         attachments: [], 
-        language, // Save the original language
+        language,
         createdAt: serverTimestamp(), 
         updatedAt: serverTimestamp() 
     });
 }
-export const updateTask = (taskId, updatedData) => updateDoc(doc(tasksCollection, taskId), { ...updatedData, updatedAt: serverTimestamp() });
+
+// FIXED: Added detailed logging as requested for debugging.
+export const updateTask = (taskId, updatedData) => {
+    console.log('Attempting to update task:', taskId, updatedData);
+    return updateDoc(doc(tasksCollection, taskId), { ...updatedData, updatedAt: serverTimestamp() })
+        .then(result => {
+            console.log('Task update successful.');
+            return result;
+        })
+        .catch(error => {
+            console.error('Task update failed in firebase-service:', error);
+            throw error;
+        });
+};
+
 export const deleteTask = (taskId) => deleteDoc(doc(tasksCollection, taskId));
 export const listenToCompanyTasks = (companyId, projectId, callback) => {
     let q;
@@ -167,7 +162,7 @@ export const addComment = (taskId, commentData) => {
     return addDoc(collection(db, 'tasks', taskId, 'comments'), { 
         ...commentData, 
         type: 'comment',
-        language, // Save the original language
+        language,
         createdAt: serverTimestamp() 
     });
 }
@@ -182,7 +177,7 @@ export const listenToTaskComments = (taskId, callback) => {
 export const addChatMessage = (companyId, author, text) => {
     return addDoc(chatCollection, {
         companyId,
-        author, // { uid, nickname, avatarURL }
+        author,
         text,
         createdAt: serverTimestamp()
     });
@@ -197,44 +192,35 @@ export const listenToCompanyChat = (companyId, callback) => {
 };
 
 
-// --- FIXED: Translation Service ---
+// --- Translation Service ---
 export const translateText = async (text, targetLanguage) => {
     if (!text || !targetLanguage) return text;
 
-    // Using a more recent, faster model for translation tasks.
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
-    
-    // A more direct prompt for better results.
     const prompt = `Translate this text to ${targetLanguage}: "${text}"`;
 
     try {
         const response = await fetch(apiUrl, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }]
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
         });
 
         if (!response.ok) {
             const errorBody = await response.json();
             console.error("Translation API Error:", response.status, errorBody);
-            return text; // Return original text on API error
+            return text;
         }
 
         const data = await response.json();
-        
-        // Improved response parsing with error checking
         if (data.candidates && data.candidates.length > 0 && data.candidates[0].content?.parts[0]?.text) {
             return data.candidates[0].content.parts[0].text.trim();
         } else {
             console.error("Invalid translation response structure:", data);
-            return text; // Return original if response is not as expected
+            return text;
         }
     } catch (error) {
         console.error('Failed to fetch translation:', error);
-        return text; // Return original text on network error
+        return text;
     }
 };
