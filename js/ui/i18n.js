@@ -1,4 +1,5 @@
-import { translateText } from '../services/task.js';
+// FILE: js/ui/i18n.js
+import { translateText } from '../services/ai.js';
 
 export async function renderTranslatedText(element, text, originalLanguage) {
     const userLanguage = localStorage.getItem('actionPadLanguage') || 'en';
