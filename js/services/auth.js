@@ -24,14 +24,17 @@ export const registerUser = async (userData) => {
     await sendVerificationEmail(user);
 
     let companyId;
-    let finalCompanyName = companyName;
+    let finalRole = companyRole;
 
     if (referralId) {
-        const company = await joinCompanyWithReferralId(user, referralId, companyRole);
+        // Users joining an existing company are Members by default.
+        finalRole = 'Member';
+        const company = await joinCompanyWithReferralId(user, referralId, finalRole);
         companyId = company.id;
-        finalCompanyName = company.name;
     } else {
-        companyId = await createNewCompany(user, companyName, companyRole);
+        // The creator of a new company is an Admin.
+        finalRole = 'Admin';
+        companyId = await createNewCompany(user, companyName, finalRole);
     }
 
     await setDoc(doc(usersCollection, user.uid), {
@@ -40,8 +43,7 @@ export const registerUser = async (userData) => {
         email,
         companies: [{
             companyId: companyId,
-            role: companyRole,
-            projects: [] // Array of { projectId, role }
+            role: finalRole,
         }],
         companyIds: [companyId]
     });
