@@ -10,6 +10,35 @@ export const initModalManager = (state) => {
     appState = state;
 }
 
+export const setupModals = () => {
+    document.querySelectorAll('.modal-overlay').forEach(modal => {
+        modal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay') || e.target.classList.contains('modal-close')) {
+                closeModal(modal);
+            }
+        });
+    });
+
+    const editTaskForm = document.getElementById('edit-task-form');
+    if (editTaskForm) {
+        editTaskForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const saveButton = editTaskForm.querySelector('button[type="submit"]');
+            saveButton.disabled = true;
+            saveButton.textContent = 'Saving...';
+            try {
+                await taskController.handleEditTask();
+                closeModal(document.getElementById('task-modal'));
+            } catch (err) {
+                console.error("UI layer caught task update error:", err);
+            } finally {
+                saveButton.disabled = false;
+                saveButton.textContent = 'Save Changes';
+            }
+        });
+    }
+};
+
 export const openModal = (modalElement, task = null) => {
     if (!modalElement) return;
     if (modalElement.id === 'task-modal' && task) {
