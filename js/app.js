@@ -13,7 +13,7 @@ import { listenToNotifications, markNotificationsAsRead } from './services/notif
 import { initializeI18n, setLanguage } from './i18n.js';
 import * as UImanager from './ui/uiManager.js';
 import * as taskController from './taskController.js';
-import { initCommandPalette } from './ui/commandPalette.js'; // NEW: Import command palette
+import { initCommandPalette } from './ui/commandPalette.js';
 import { showToast } from './toast.js';
 
 const appState = {
@@ -94,7 +94,7 @@ async function initialize(companyId) {
         taskController.initTaskController(appState);
         UImanager.initUIManager(appState);
         UImanager.initModalManager(appState);
-        initCommandPalette(appState, { openModal: UImanager.openModal, switchProject }); // NEW: Initialize command palette
+        initCommandPalette(appState, { openModal: UImanager.openModal, switchProject });
 
         setupUI();
         setupListeners();
@@ -166,7 +166,7 @@ function switchProject(projectId) {
 
     appState.tasksListener = listenToCompanyTasks(appState.company.id, projectId, (tasks) => {
         appState.tasks = tasks;
-        UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
+        UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm), appState);
     });
 }
 
@@ -198,7 +198,7 @@ function setupUI() {
         if (e.target.matches('.view-btn')) {
             appState.currentView = e.target.dataset.view;
             UImanager.switchView(appState.currentView);
-            UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
+            UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm), appState);
         }
     });
 
@@ -230,7 +230,7 @@ function setupUI() {
 
     document.getElementById('search-bar').addEventListener('input', (e) => {
         appState.searchTerm = e.target.value;
-        UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
+        UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm), appState);
     });
 
     document.getElementById('team-chat-form').addEventListener('submit', (e) => {
