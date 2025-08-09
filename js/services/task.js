@@ -1,3 +1,4 @@
+// FILE: js/services/task.js
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs, query, where, serverTimestamp, onSnapshot, orderBy } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 import { db } from '../firebase-config.js';
 import { showToast } from '../toast.js';
@@ -46,13 +47,13 @@ export const listenToCompanyTasks = (companyId, projectId, callback) => {
     }
 
     return onSnapshot(q, (snapshot) => {
-        const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), isNew: false }));
-        // Add a small delay and then mark as not new for visual feedback
-        setTimeout(() => {
-            callback(tasks.map(t => ({...t, isNew: false})));
-        }, 2000);
-        callback(tasks.map((t, i) => ({...t, isNew: snapshot.docChanges().some(change => change.type === 'added' && change.doc.id === t.id)})));
-
+        const addedDocs = new Set(snapshot.docChanges().filter(c => c.type === 'added').map(c => c.doc.id));
+        const tasks = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            isNew: addedDocs.has(doc.id)
+        }));
+        callback(tasks);
     }, (error) => {
         console.error("Error listening to tasks: ", error);
         showToast("Database error: A required index is missing. Check console.", "error");
