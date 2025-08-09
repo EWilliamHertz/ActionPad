@@ -1,6 +1,7 @@
 import { collection, addDoc, doc, getDoc, getDocs, query, where, serverTimestamp, arrayUnion, updateDoc } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 import { db } from '../firebase-config.js';
 import { usersCollection } from './firestore.js';
+import { listenToCompanyPresence as originalListen } from './presence.js';
 
 const companiesCollection = collection(db, 'companies');
 
@@ -19,7 +20,6 @@ export const createNewCompany = async (user, companyName, userRole) => {
         companies: arrayUnion({
             companyId: companyId,
             role: userRole,
-            projects: []
         }),
         companyIds: arrayUnion(companyId)
     });
@@ -42,9 +42,30 @@ export const joinCompanyWithReferralId = async (user, referralId, role) => {
         companies: arrayUnion({
             companyId: companyId,
             role: role,
-            projects: []
         }),
         companyIds: arrayUnion(companyId)
     });
     return { id: companyId, name: companyDoc.data().name };
 };
+
+export const updateUserRole = async (companyId, userId, newRole) => {
+    const userRef = doc(usersCollection, userId);
+    const userSnap = await getDoc(userRef);
+
+    if (userSnap.exists()) {
+        const userData = userSnap.data();
+        const updatedCompanies = userData.companies.map(membership => {
+            if (membership.companyId === companyId) {
+                return { ...membership, role: newRole };
+            }
+            return membership;
+        });
+
+        await updateDoc(userRef, { companies: updatedCompanies });
+    } else {
+        throw new Error("User not found.");
+    }
+};
+
+// Re-exporting this function so it can be accessed via services/company.js
+export const listenToCompanyPresence = originalListen;
