@@ -1,3 +1,4 @@
+// FILE: js/ui/taskRenderer.js
 import { openModal } from './modalManager.js';
 import * as taskController from '../taskController.js';
 import { renderTranslatedText } from './i18n.js';
@@ -35,14 +36,15 @@ export const createTaskElement = (task) => {
 
 export const renderListView = (tasks) => {
     if (!DOM.listView) return;
-    DOM.listView.innerHTML = '';
     const taskList = document.createElement('div');
     taskList.className = 'task-list';
-    if (!tasks || tasks.length === 0) {
-        taskList.innerHTML = `<div class="skeleton-task"></div><div class="skeleton-task"></div><div class="skeleton-task"></div>`;
-    } else {
+
+    if (tasks && tasks.length > 0) {
         tasks.forEach(task => taskList.appendChild(createTaskElement(task)));
+    } else {
+        taskList.innerHTML = `<p class="empty-state">No tasks in this project. Add one to get started!</p>`;
     }
+    DOM.listView.innerHTML = '';
     DOM.listView.appendChild(taskList);
 };
 
@@ -52,12 +54,18 @@ export const renderKanbanView = (tasks) => {
         'in-progress': document.getElementById('kanban-in-progress'),
         done: document.getElementById('kanban-done'),
     };
-    Object.values(columns).forEach(col => { if (col) col.innerHTML = `<div class="skeleton-task"></div>`; });
+    
+    // Clear all columns first
+    Object.values(columns).forEach(col => { if (col) col.innerHTML = ''; });
+
     if (tasks && tasks.length > 0) {
-       Object.values(columns).forEach(col => { if (col) col.innerHTML = ''; });
-       (tasks || []).forEach(task => {
+       tasks.forEach(task => {
             const status = task.status || 'todo';
             if(columns[status]) columns[status].appendChild(createTaskElement(task));
         });
+    } else {
+        if (columns.todo) {
+            columns.todo.innerHTML = `<p class="empty-state-small">No tasks</p>`;
+        }
     }
 };
