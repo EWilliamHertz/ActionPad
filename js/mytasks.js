@@ -55,10 +55,21 @@ async function renderAssignedTasks(userId) {
             tasksByCompany[companyName].forEach(task => {
                 const item = document.createElement('li');
                 item.className = `task-item-simple ${task.status}`;
+                
+                // IMPROVEMENT: Added priority and due date for more context
+                const dueDateHtml = task.dueDate 
+                    ? `<span class="task-due-date">Due: ${new Date(task.dueDate).toLocaleDateString()}</span>` 
+                    : '';
+
                 item.innerHTML = `
-                    <span class="task-name">${task.name}</span>
-                    <span class="task-project">Project: ${task.projectName || 'N/A'}</span>
-                    <span class="task-due-date">${task.dueDate ? `Due: ${new Date(task.dueDate).toLocaleDateString()}` : ''}</span>
+                    <div class="task-item-simple-main">
+                        <span class="priority-dot priority-${task.priority || 'low'}"></span>
+                        <span class="task-name">${task.name}</span>
+                    </div>
+                    <div class="task-item-simple-details">
+                        <span class="task-project">Project: ${task.projectName || 'N/A'}</span>
+                        ${dueDateHtml}
+                    </div>
                 `;
                 taskList.appendChild(item);
             });
