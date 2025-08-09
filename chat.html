@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team Chat - ActionPad</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="toast-container"></div>
+    <div id="chat-page-container" class="hidden">
+        <header class="main-header">
+            <div class="header-left">
+                <a href="index.html" class="back-to-app-link">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                    Back to Tasks
+                </a>
+                <h1 id="chat-company-name">Team Chat</h1>
+            </div>
+            <div class="header-controls">
+                <div id="user-info">
+                    <img id="user-avatar-header" src="https://placehold.co/40x40/E9ECEF/495057?text=A" alt="User Avatar" class="avatar-header">
+                    <div>
+                        <span id="user-nickname"></span>
+                    </div>
+                </div>
+                <button id="logout-button" data-i18n="logout">Logout</button>
+            </div>
+        </header>
+
+        <main class="chat-main">
+            <div id="full-chat-messages">
+                <div class="loader">Loading messages...</div>
+            </div>
+            <form id="full-chat-form">
+                <div class="comment-input-wrapper">
+                     <input type="text" id="full-chat-input" placeholder="Type a message..." required autocomplete="off">
+                     <button type="submit">Send</button>
+                </div>
+            </form>
+        </main>
+    </div>
+
+    <script type="module" src="js/chat.js"></script>
+</body>
+</html>
