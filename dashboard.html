@@ -26,10 +26,12 @@
         </header>
 
         <main class="dashboard-main">
-            <h2>Your Companies</h2>
-            <div id="company-cards-container" class="company-cards-grid">
-                <!-- Company cards will be dynamically inserted here -->
+            <div class="dashboard-main-header">
+                <h2>Your Companies</h2>
+                <a href="mytasks.html" id="my-tasks-btn" class="dashboard-action-btn">View My Tasks</a>
             </div>
+            <div id="company-cards-container" class="company-cards-grid">
+                </div>
             <div class="dashboard-actions">
                 <button id="join-company-btn">Join Another Company</button>
                 <button id="create-company-btn">Create a New Company</button>
@@ -37,7 +39,6 @@
         </main>
     </div>
 
-    <!-- Modals for joining/creating companies -->
     <div id="join-company-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <button class="modal-close">&times;</button>
