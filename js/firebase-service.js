@@ -63,7 +63,9 @@ export const registerUser = async (userData) => {
         companies: [{
             companyId: companyId,
             role: companyRole
-        }]
+        }],
+        // NEW: Add a simple array of IDs for efficient querying.
+        companyIds: [companyId]
     });
 
     localStorage.setItem('selectedCompanyId', companyId);
@@ -82,11 +84,13 @@ export const joinCompanyWithReferralId = async (user, referralId) => {
     const companyId = companyDoc.id;
     const userRef = doc(usersCollection, user.uid);
 
+    // NEW: Update both the detailed array and the simple ID array.
     await updateDoc(userRef, {
         companies: arrayUnion({
             companyId: companyId,
             role: 'Member' 
-        })
+        }),
+        companyIds: arrayUnion(companyId)
     });
 };
 
@@ -99,11 +103,13 @@ export const createNewCompany = async (user, companyName, userRole) => {
     const companyId = newCompanyRef.id;
     const userRef = doc(usersCollection, user.uid);
 
+    // NEW: Update both arrays here as well.
     await updateDoc(userRef, {
         companies: arrayUnion({
             companyId: companyId,
             role: userRole
-        })
+        }),
+        companyIds: arrayUnion(companyId)
     });
     return companyId;
 };
@@ -136,7 +142,8 @@ export const manageUserPresence = async (user, companyId) => {
 };
 
 export const listenToCompanyPresence = (companyId, callback) => {
-    const q = query(usersCollection, where("activeCompany", "==", companyId));
+    // UPDATED: This query is now correct and efficient.
+    const q = query(usersCollection, where("companyIds", "array-contains", companyId));
     return onSnapshot(q, (snapshot) => {
         const users = snapshot.docs.map(doc => {
             const data = doc.data();
@@ -180,7 +187,7 @@ export const addTask = (taskData, companyId, author) => {
         subtasks: [], 
         attachments: [], 
         language,
-        order: Date.now(), // For drag-and-drop reordering
+        order: Date.now(),
         createdAt: serverTimestamp(), 
         updatedAt: serverTimestamp() 
     });
@@ -197,13 +204,13 @@ export const listenToCompanyTasks = (companyId, projectId, callback) => {
     if (projectId === 'all') {
         q = query(tasksCollection, 
             where("companyId", "==", companyId), 
-            orderBy("order", "asc") // Changed to 'order' for drag-and-drop
+            orderBy("order", "asc")
         );
     } else {
         q = query(tasksCollection, 
             where("companyId", "==", companyId), 
             where("projectId", "==", projectId), 
-            orderBy("order", "asc") // Changed to 'order' for drag-and-drop
+            orderBy("order", "asc")
         );
     }
     
@@ -216,13 +223,11 @@ export const listenToCompanyTasks = (companyId, projectId, callback) => {
     });
 };
 
-// NEW: Get all tasks assigned to a user across all companies
 export const getTasksAssignedToUser = async (userId) => {
     const q = query(tasksCollection, where("assignedTo", "array-contains", userId));
     const querySnapshot = await getDocs(q);
     
     const tasks = [];
-    // We need to fetch company and project names for context
     for (const taskDoc of querySnapshot.docs) {
         const taskData = { id: taskDoc.id, ...taskDoc.data() };
 
@@ -249,7 +254,6 @@ export const addComment = (taskId, commentData, mentions) => {
         language,
         createdAt: serverTimestamp() 
     });
-    // Create notifications for mentioned users
     mentions.forEach(userId => {
         createNotification(userId, {
             text: `${commentData.author.nickname} mentioned you in a comment on task.`,
@@ -287,12 +291,12 @@ export const getCompanyDashboardData = async (companyId) => {
     const companySnap = await getCompany(companyId);
     const company = companySnap.exists() ? { id: companySnap.id, ...companySnap.data() } : null;
 
-    // Get all tasks for the company, ordered by latest update
     const tasksQuery = query(tasksCollection, where("companyId", "==", companyId), orderBy("updatedAt", "desc"));
     const tasksSnap = await getDocs(tasksQuery);
     const tasks = tasksSnap.docs.map(doc => doc.data());
 
-    const membersQuery = query(usersCollection, where("companies", "array-contains", { companyId: companyId }));
+    // FIXED: This query now correctly uses the new `companyIds` array.
+    const membersQuery = query(usersCollection, where("companyIds", "array-contains", companyId));
     const membersSnap = await getDocs(membersQuery);
     const members = membersSnap.docs.map(doc => doc.data());
 
@@ -308,12 +312,11 @@ export const uploadTaskAttachment = async (taskId, file) => {
     const attachmentData = {
         name: file.name,
         url: downloadURL,
-        path: filePath, // Store path for deletion
+        path: filePath,
         size: file.size,
         type: file.type,
         uploadedAt: serverTimestamp()
     };
-    // Add this attachment to the task document
     const taskRef = doc(tasksCollection, taskId);
     await updateDoc(taskRef, {
         attachments: arrayUnion(attachmentData)
@@ -322,11 +325,9 @@ export const uploadTaskAttachment = async (taskId, file) => {
 };
 
 export const deleteAttachment = async (taskId, attachment) => {
-    // Delete file from storage
     const fileRef = storageRef(storage, attachment.path);
     await deleteObject(fileRef);
 
-    // Remove from task document
     const taskRef = doc(tasksCollection, taskId);
     const taskSnap = await getDoc(taskRef);
     if(taskSnap.exists()){
@@ -338,7 +339,6 @@ export const deleteAttachment = async (taskId, attachment) => {
 
 // --- Notifications ---
 export const createNotification = (userId, notificationData) => {
-    // Notifications are a subcollection under each user
     const userNotificationsCollection = collection(db, 'users', userId, 'notifications');
     return addDoc(userNotificationsCollection, {
         ...notificationData,
@@ -387,7 +387,6 @@ export const translateText = async (text, targetLanguage) => {
     }
 };
 
-// NEW: AI Subtask Generation
 export const generateSubtasksAI = async (taskName, taskDescription) => {
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
     const prompt = `You are a project management assistant. Break down the following task into a short, actionable list of subtasks.
@@ -408,13 +407,12 @@ export const generateSubtasksAI = async (taskName, taskDescription) => {
         const data = await response.json();
         const rawText = data.candidates[0].content.parts[0].text;
         
-        // Clean up the response to be valid JSON
         const jsonText = rawText.replace(/`/g, '').replace('javascript', '').trim();
         const subtasks = JSON.parse(jsonText);
         return subtasks.map(text => ({ text, isCompleted: false }));
 
     } catch (error) {
         console.error('Failed to generate subtasks with AI:', error);
-        throw error; // Re-throw to be caught by the UI
+        throw error;
     }
 };
