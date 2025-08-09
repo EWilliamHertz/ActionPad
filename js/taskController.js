@@ -61,12 +61,25 @@ const handleAddTask = (text) => {
         });
 };
 
-export const handleEditTask = () => {
+// FIXED: Re-architected the function to be more robust and guarantee security rules are met.
+export const handleEditTask = async () => {
     const taskId = document.getElementById('edit-task-id').value;
+    
+    // 1. Get the latest version of the task from the database.
+    // This ensures we have the original companyId to satisfy security rules.
+    const taskSnap = await firebaseService.getTask(taskId);
+    if (!taskSnap.exists()) {
+        throw new Error("Task not found. It may have been deleted.");
+    }
+    const existingTaskData = taskSnap.data();
+
+    // 2. Get the new values from the form.
     const selectedOptions = document.querySelectorAll('#edit-task-assignees option:checked');
     const assignees = Array.from(selectedOptions).map(el => el.value);
 
-    const taskData = {
+    // 3. Create the update payload.
+    const updatedData = {
+        ...existingTaskData, // Start with the existing data
         name: document.getElementById('edit-task-name').value,
         description: document.getElementById('edit-task-description').value,
         dueDate: document.getElementById('edit-task-due-date').value,
@@ -76,15 +89,14 @@ export const handleEditTask = () => {
         projectId: document.getElementById('edit-task-project').value
     };
 
-    // Return the promise so the UI can await it and handle success/error.
-    return firebaseService.updateTask(taskId, taskData)
+    // 4. Perform the update. This will now reliably pass security rules.
+    return firebaseService.updateTask(taskId, updatedData)
         .then(() => {
             showToast('Task updated!', 'success');
         })
         .catch(err => {
             console.error("Controller caught task update error:", err);
             showToast(`Update failed: ${err.message}`, 'error');
-            // Re-throw the error so the UI layer knows it failed.
             throw err;
         });
 };
@@ -95,6 +107,7 @@ export const toggleTaskStatus = (taskId, isDone) => {
 };
 
 export const updateTaskStatus = (taskId, newStatus) => {
+    // This is a partial update, so it's simpler and less prone to data issues.
     firebaseService.updateTask(taskId, { status: newStatus })
         .catch(err => {
             console.error("Error updating task status:", err);
