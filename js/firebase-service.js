@@ -1,5 +1,5 @@
 // FILE: js/firebase-service.js
-// REMOVED: rtdb is no longer imported or used.
+// FIXED: No longer imports 'rtdb' as it is not initialized in the config.
 import { auth, db, storage } from './firebase-config.js';
 import {
     createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as firebaseSignOut,
@@ -12,7 +12,6 @@ import {
     query, where, serverTimestamp, setDoc, onSnapshot, orderBy
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js";
-// REMOVED: All Realtime Database imports are gone.
 
 const usersCollection = collection(db, 'users');
 const companiesCollection = collection(db, 'companies');
@@ -31,7 +30,6 @@ export const signOut = () => {
     const user = auth.currentUser;
     if (user) {
         const userStatusFirestoreRef = doc(db, 'users', user.uid);
-        // Set user to offline in Firestore on manual sign-out.
         updateDoc(userStatusFirestoreRef, { online: false, last_changed: serverTimestamp() });
     }
     return firebaseSignOut(auth);
@@ -81,15 +79,10 @@ export const updateUserPassword = async (currentPassword, newPassword) => {
     await updatePassword(user, newPassword);
 };
 
-// --- FIXED: Presence Management (Firestore-only) ---
+// --- Presence Management (Firestore-only) ---
 export const manageUserPresence = async (user) => {
     const userStatusFirestoreRef = doc(db, 'users', user.uid);
-    // Set user to online when the app initializes
     await updateDoc(userStatusFirestoreRef, { online: true, last_changed: serverTimestamp() });
-
-    // The signOut function already handles setting the user to offline.
-    // For handling browser close, a more advanced solution using beacon API or service workers
-    // would be needed, but this covers the primary online/offline cases.
 };
 
 export const listenToCompanyPresence = (companyId, callback) => {
@@ -131,7 +124,6 @@ export const addTask = (taskData, companyId, author) => {
     });
 }
 
-// FIXED: Added detailed logging as requested for debugging.
 export const updateTask = (taskId, updatedData) => {
     console.log('Attempting to update task:', taskId, updatedData);
     return updateDoc(doc(tasksCollection, taskId), { ...updatedData, updatedAt: serverTimestamp() })
