@@ -20,6 +20,8 @@ const appState = {
     user: null, profile: null, company: null, team: [], projects: [], tasks: [],
     notifications: [],
     currentView: 'list-view', currentProjectId: 'all', searchTerm: '',
+    filterAssignee: 'all',
+    sortTasks: 'createdAt-desc',
     tasksListener: null,
     projectsListener: null,
     presenceListener: null,
@@ -84,7 +86,7 @@ async function initialize(companyId) {
         appState.profile = {
             uid: appState.user.uid,
             ...fullProfile,
-            companyRole: companyMembership.role
+            companyRole: companyMembership.role // Set the role for the current company
         };
 
         const companySnap = await getCompany(companyId);
@@ -112,7 +114,6 @@ async function initialize(companyId) {
 }
 
 function setupListeners() {
-    // Clear existing listeners to prevent duplicates on re-initialization
     if (appState.projectsListener) appState.projectsListener();
     if (appState.presenceListener) appState.presenceListener();
     if (appState.chatListener) appState.chatListener();
@@ -123,15 +124,14 @@ function setupListeners() {
         UImanager.renderProjectList(appState.projects, appState.currentProjectId);
         if (appState.currentProjectId !== 'all') {
             const updatedProject = projects.find(p => p.id === appState.currentProjectId);
-            if (updatedProject) {
-                UImanager.updateProjectHeader(updatedProject);
-            }
+            if (updatedProject) UImanager.updateProjectHeader(updatedProject);
         }
     });
 
     appState.presenceListener = listenToCompanyPresence(appState.company.id, (users) => {
         appState.team = users;
-        UImanager.renderTeamList(appState.team, appState.user.uid); // Pass current user ID
+        UImanager.renderTeamList(appState.team, appState.user.uid);
+        populateAssigneeFilter(users);
     });
 
     appState.chatListener = listenToCompanyChat(appState.company.id, (messages) => {
@@ -140,49 +140,68 @@ function setupListeners() {
 
     appState.notificationsListener = listenToNotifications(appState.user.uid, (notifications) => {
         appState.notifications = notifications;
-        // UImanager.updateNotificationBell(notifications); // This can be implemented when the UI element is ready
     });
 
     switchProject('all');
 }
 
-
 function switchProject(projectId) {
     appState.currentProjectId = projectId;
-
-    if (appState.tasksListener) {
-        appState.tasksListener();
-    }
+    if (appState.tasksListener) appState.tasksListener();
 
     UImanager.renderProjectList(appState.projects, projectId);
     if (projectId === 'all') {
         UImanager.hideProjectHeader();
     } else {
         const project = appState.projects.find(p => p.id === projectId);
-        if (project) {
-            UImanager.updateProjectHeader(project);
-        }
+        if (project) UImanager.updateProjectHeader(project);
     }
 
     appState.tasksListener = listenToCompanyTasks(appState.company.id, projectId, (tasks) => {
         appState.tasks = tasks;
-        UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm), appState);
+        renderFilteredTasks();
     });
 }
 
-async function handleLogoUpload(e) {
-    const file = e.target.files[0];
-    if (!file || appState.currentProjectId === 'all') return;
+function renderFilteredTasks() {
+    const processedTasks = applyFiltersAndSorts(appState.tasks);
+    UImanager.renderView(appState.currentView, processedTasks, appState);
+}
 
-    showToast('Uploading logo...', 'success');
-    try {
-        const logoURL = await uploadProjectLogo(appState.currentProjectId, file);
-        await updateProject(appState.currentProjectId, { logoURL });
-        showToast('Logo updated!', 'success');
-    } catch (error) {
-        console.error("Logo upload failed:", error);
-        showToast('Logo upload failed.', 'error');
+function applyFiltersAndSorts(tasks) {
+    let filteredTasks = [...tasks];
+
+    // Search term filter
+    if (appState.searchTerm) {
+        const lowercasedTerm = appState.searchTerm.toLowerCase();
+        filteredTasks = filteredTasks.filter(task => task.name.toLowerCase().includes(lowercasedTerm));
     }
+
+    // Assignee filter
+    if (appState.filterAssignee !== 'all') {
+        filteredTasks = filteredTasks.filter(task => task.assignedTo && task.assignedTo.includes(appState.filterAssignee));
+    }
+
+    // Sorting
+    const [sortBy, direction] = appState.sortTasks.split('-');
+    const dir = direction === 'asc' ? 1 : -1;
+    const priorityMap = { high: 3, medium: 2, low: 1 };
+
+    filteredTasks.sort((a, b) => {
+        switch (sortBy) {
+            case 'dueDate':
+                return (new Date(a.dueDate || 0) - new Date(b.dueDate || 0)) * dir;
+            case 'priority':
+                return ((priorityMap[a.priority] || 0) - (priorityMap[b.priority] || 0)) * dir;
+            case 'createdAt':
+            default:
+                const timeA = a.createdAt?.seconds || 0;
+                const timeB = b.createdAt?.seconds || 0;
+                return (timeA - timeB) * dir;
+        }
+    });
+
+    return filteredTasks;
 }
 
 function setupUI() {
@@ -198,19 +217,33 @@ function setupUI() {
         if (e.target.matches('.view-btn')) {
             appState.currentView = e.target.dataset.view;
             UImanager.switchView(appState.currentView);
-            UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm), appState);
+            renderFilteredTasks();
         }
     });
-
+    
     document.getElementById('project-list').addEventListener('click', (e) => {
         if (e.target.matches('.project-item')) {
             const projectId = e.target.dataset.projectId;
-            if (projectId !== appState.currentProjectId) {
-                switchProject(projectId);
-            }
+            if (projectId !== appState.currentProjectId) switchProject(projectId);
         }
     });
 
+    document.getElementById('search-bar').addEventListener('input', (e) => {
+        appState.searchTerm = e.target.value;
+        renderFilteredTasks();
+    });
+
+    // Filter and Sort event listeners
+    document.getElementById('filter-assignee').addEventListener('change', (e) => {
+        appState.filterAssignee = e.target.value;
+        renderFilteredTasks();
+    });
+    document.getElementById('sort-tasks').addEventListener('change', (e) => {
+        appState.sortTasks = e.target.value;
+        renderFilteredTasks();
+    });
+
+    // Other UI setups
     const logoUploadInput = document.getElementById('logo-upload-input');
     const changeLogoBtn = document.getElementById('change-logo-btn');
     if(changeLogoBtn) changeLogoBtn.addEventListener('click', () => logoUploadInput.click());
@@ -228,53 +261,45 @@ function setupUI() {
         document.getElementById('sidebar').classList.toggle('open');
     });
 
-    document.getElementById('search-bar').addEventListener('input', (e) => {
-        appState.searchTerm = e.target.value;
-        UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm), appState);
-    });
-
     document.getElementById('team-chat-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const input = document.getElementById('team-chat-input');
         const text = input.value.trim();
         if (text) {
-            const author = {
-                uid: appState.user.uid,
-                nickname: appState.profile.nickname,
-                avatarURL: appState.profile.avatarURL || null
-            };
-            addChatMessage(appState.company.id, author, text)
-                .catch(err => console.error("Error sending chat message:", err));
+            const author = { uid: appState.user.uid, nickname: appState.profile.nickname, avatarURL: appState.profile.avatarURL || null };
+            addChatMessage(appState.company.id, author, text);
             input.value = '';
         }
     });
-
-    document.getElementById('notification-bell').addEventListener('click', () => {
-        const dropdown = document.getElementById('notification-dropdown');
-        dropdown.classList.toggle('hidden');
-        if(!dropdown.classList.contains('hidden')) {
-            markNotificationsAsRead(appState.user.uid, appState.notifications);
-        }
-    });
-
-    const languageSwitcher = document.querySelector('.sidebar-footer .language-switcher');
-    if (languageSwitcher) {
-        languageSwitcher.addEventListener('click', (e) => {
-            if (e.target.matches('.lang-btn')) {
-                setLanguage(e.target.dataset.lang);
-            }
-        });
-    }
-
+    
     taskController.setupProjectForm(appState);
     taskController.setupTaskForm();
-    
-    if (UImanager.setupModals) UImanager.setupModals();
-    if (UImanager.setupDragDrop) UImanager.setupDragDrop();
+    UImanager.setupModals();
+    UImanager.setupDragDrop();
 }
 
-function filterTasks(tasks, searchTerm) {
-    if (!searchTerm) return tasks;
-    const lowercasedTerm = searchTerm.toLowerCase();
-    return tasks.filter(task => task.name.toLowerCase().includes(lowercasedTerm));
+function populateAssigneeFilter(team) {
+    const select = document.getElementById('filter-assignee');
+    select.innerHTML = '<option value="all">All Members</option>'; // Reset
+    team.forEach(user => {
+        const option = document.createElement('option');
+        option.value = user.id;
+        option.textContent = user.nickname;
+        select.appendChild(option);
+    });
+    select.value = appState.filterAssignee; // Restore previous selection
+}
+
+async function handleLogoUpload(e) {
+    const file = e.target.files[0];
+    if (!file || appState.currentProjectId === 'all') return;
+    showToast('Uploading logo...', 'success');
+    try {
+        const logoURL = await uploadProjectLogo(appState.currentProjectId, file);
+        await updateProject(appState.currentProjectId, { logoURL });
+        showToast('Logo updated!', 'success');
+    } catch (error) {
+        console.error("Logo upload failed:", error);
+        showToast('Logo upload failed.', 'error');
+    }
 }
