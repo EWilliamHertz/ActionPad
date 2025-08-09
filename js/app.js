@@ -33,20 +33,24 @@ document.addEventListener('DOMContentLoaded', () => {
             // NEW: Multi-company logic
             const companies = profile.companies || [];
             if (companies.length > 1 && !localStorage.getItem('selectedCompanyId')) {
+                // If user is in multiple companies and hasn't chosen one, go to dashboard
                 window.location.replace('dashboard.html');
             } else if (companies.length === 0) {
-                 window.location.replace('dashboard.html'); // Go to dashboard to create/join company
+                 // If user has no companies, go to dashboard to create/join one
+                 window.location.replace('dashboard.html');
             }
             else {
+                // Load the selected company, or the first one by default
                 const companyIdToLoad = localStorage.getItem('selectedCompanyId') || companies[0]?.companyId;
                 if(companyIdToLoad) {
                     initialize(companyIdToLoad);
                 } else {
-                    // This case handles a user with no companies. Redirect to dashboard.
+                    // This case handles a user with a malformed profile (no companies array). Redirect to dashboard.
                     window.location.replace('dashboard.html');
                 }
             }
         } else {
+            // If user is not logged in, redirect to login page
             if (!window.location.pathname.includes('login.html') && !window.location.pathname.includes('register.html')) {
                 window.location.replace('login.html');
             }
@@ -165,4 +169,85 @@ async function handleLogoUpload(e) {
         const logoURL = await uploadProjectLogo(appState.currentProjectId, file);
         await updateProject(appState.currentProjectId, { logoURL });
         showToast('Logo updated!', 'success');
-    } catch (err
+    } catch (error) {
+        console.error("Logo upload failed:", error);
+        showToast('Logo upload failed.', 'error');
+    }
+}
+
+function setupUI() {
+    initializeI18n();
+    uiManager.updateUserInfo(appState.profile, appState.company);
+    
+    document.getElementById('logout-button').addEventListener('click', () => {
+        // Clear the selected company when logging out
+        localStorage.removeItem('selectedCompanyId');
+        signOut();
+    });
+    
+    document.getElementById('view-switcher').addEventListener('click', (e) => {
+        if (e.target.matches('.view-btn')) {
+            appState.currentView = e.target.dataset.view;
+            uiManager.switchView(appState.currentView);
+            uiManager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
+        }
+    });
+
+    document.getElementById('project-list').addEventListener('click', (e) => {
+        if (e.target.matches('.project-item')) {
+            const projectId = e.target.dataset.projectId;
+            if (projectId !== appState.currentProjectId) {
+                switchProject(projectId);
+            }
+        }
+    });
+    
+    const logoUploadInput = document.getElementById('logo-upload-input');
+    const changeLogoBtn = document.getElementById('change-logo-btn');
+    if(changeLogoBtn) changeLogoBtn.addEventListener('click', () => logoUploadInput.click());
+    if(logoUploadInput) logoUploadInput.addEventListener('change', handleLogoUpload);
+
+    document.getElementById('share-invite-button').addEventListener('click', () => {
+        const currentPath = window.location.href;
+        const basePath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
+        const inviteLink = `${basePath}register.html?ref=${appState.company.referralId}`;
+        uiManager.openInviteModal(inviteLink);
+    });
+    
+    document.getElementById('hamburger-menu').addEventListener('click', () => {
+        document.getElementById('sidebar').classList.toggle('open');
+    });
+    
+    document.getElementById('search-bar').addEventListener('input', (e) => {
+        appState.searchTerm = e.target.value;
+        uiManager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
+    });
+
+    document.getElementById('team-chat-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('team-chat-input');
+        const text = input.value.trim();
+        if (text) {
+            const author = {
+                uid: appState.user.uid,
+                nickname: appState.profile.nickname,
+                avatarURL: appState.profile.avatarURL || null
+            };
+            addChatMessage(appState.company.id, author, text)
+                .catch(err => console.error("Error sending chat message:", err));
+            input.value = '';
+        }
+    });
+
+    taskController.setupProjectForm(appState);
+    taskController.setupTaskForm();
+    
+    uiManager.setupModals();
+    uiManager.setupEventListeners();
+}
+
+function filterTasks(tasks, searchTerm) {
+    if (!searchTerm) return tasks;
+    const lowercasedTerm = searchTerm.toLowerCase();
+    return tasks.filter(task => task.name.toLowerCase().includes(lowercasedTerm));
+}
