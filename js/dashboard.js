@@ -5,8 +5,9 @@ import {
     getCompanyDashboardData,
     signOut,
     joinCompanyWithReferralId,
-    createNewCompany
-} from './firebase-service.js';
+    createNewCompany,
+    getUpcomingDeadlines
+} from './services/index.js'; // Assuming a new index.js for services
 import { showToast } from './toast.js';
 
 let currentUser = null;
@@ -31,6 +32,7 @@ onAuthStateChanged(auth, async (user) => {
             const profile = profileSnap.data();
             updateUserInfo(profile);
             renderCompanyCards(profile.companies || []);
+            renderDashboardWidgets(user.uid);
         } else {
             showToast("Could not load your user profile.", "error");
             renderCompanyCards([]);
@@ -52,19 +54,18 @@ function updateUserInfo(profile) {
 
 async function renderCompanyCards(companyMemberships) {
     const container = document.getElementById('company-cards-container');
-    container.innerHTML = '<div class="loader">Loading company data...</div>';
+    container.innerHTML = '<div class="skeleton-card"></div><div class="skeleton-card"></div>';
 
     if (companyMemberships.length === 0) {
         container.innerHTML = '<p>You are not a member of any company yet.</p>';
         return;
     }
 
-    // NEW: Added a try...catch block to handle potential errors during data fetching.
     try {
         const cardPromises = companyMemberships.map(membership => getCompanyDashboardData(membership.companyId));
         const companiesData = await Promise.all(cardPromises);
 
-        container.innerHTML = ''; // Clear loader
+        container.innerHTML = ''; 
 
         companiesData.forEach((data, index) => {
             if (data.company) {
@@ -131,6 +132,27 @@ function createCompanyCard(data, membership) {
     });
 
     return card;
+}
+
+
+async function renderDashboardWidgets(userId) {
+    const upcomingDeadlinesContainer = document.getElementById('upcoming-deadlines-widget');
+    upcomingDeadlinesContainer.innerHTML = '<h4>Upcoming Deadlines</h4><div class="skeleton-widget-item"></div><div class="skeleton-widget-item"></div>';
+    
+    const deadlines = await getUpcomingDeadlines(userId);
+    upcomingDeadlinesContainer.innerHTML = '<h4>Upcoming Deadlines</h4>';
+    if(deadlines.length > 0) {
+        const list = document.createElement('ul');
+        list.className = 'widget-list';
+        deadlines.forEach(task => {
+            const item = document.createElement('li');
+            item.innerHTML = `<strong>${task.name}</strong> - ${new Date(task.dueDate).toLocaleDateString()}`;
+            list.appendChild(item);
+        });
+        upcomingDeadlinesContainer.appendChild(list);
+    } else {
+        upcomingDeadlinesContainer.innerHTML += '<p>No upcoming deadlines in the next 7 days.</p>';
+    }
 }
 
 
