@@ -61,25 +61,21 @@ const handleAddTask = (text) => {
         });
 };
 
-// FIXED: Re-architected the function to be more robust and guarantee security rules are met.
+// IMPROVEMENT: This function now generates a detailed log of all changes made during an edit.
 export const handleEditTask = async () => {
     const taskId = document.getElementById('edit-task-id').value;
     
-    // 1. Get the latest version of the task from the database.
-    // This ensures we have the original companyId to satisfy security rules.
     const taskSnap = await firebaseService.getTask(taskId);
     if (!taskSnap.exists()) {
         throw new Error("Task not found. It may have been deleted.");
     }
     const existingTaskData = taskSnap.data();
+    const author = { uid: appState.user.uid, nickname: appState.profile.nickname };
 
-    // 2. Get the new values from the form.
     const selectedOptions = document.querySelectorAll('#edit-task-assignees option:checked');
     const assignees = Array.from(selectedOptions).map(el => el.value);
 
-    // 3. Create the update payload.
     const updatedData = {
-        ...existingTaskData, // Start with the existing data
         name: document.getElementById('edit-task-name').value,
         description: document.getElementById('edit-task-description').value,
         dueDate: document.getElementById('edit-task-due-date').value,
@@ -89,8 +85,30 @@ export const handleEditTask = async () => {
         projectId: document.getElementById('edit-task-project').value
     };
 
-    // 4. Perform the update. This will now reliably pass security rules.
-    return firebaseService.updateTask(taskId, updatedData)
+    // --- Generate Detailed Activity Logs ---
+    const changes = [];
+    if (existingTaskData.name !== updatedData.name) changes.push(`renamed the task to "${updatedData.name}"`);
+    if (existingTaskData.status !== updatedData.status) changes.push(`changed the status from ${existingTaskData.status || 'todo'} to ${updatedData.status}`);
+    if (existingTaskData.priority !== updatedData.priority) changes.push(`set the priority to ${updatedData.priority}`);
+    if (existingTaskData.dueDate !== updatedData.dueDate) changes.push(`set the due date to ${updatedData.dueDate || 'none'}`);
+    
+    // Log assignee changes
+    const oldAssignees = new Set(existingTaskData.assignedTo || []);
+    const newAssignees = new Set(updatedData.assignedTo || []);
+    appState.team.forEach(member => {
+        if (oldAssignees.has(member.id) && !newAssignees.has(member.id)) changes.push(`unassigned ${member.nickname}`);
+        if (!oldAssignees.has(member.id) && newAssignees.has(member.id)) changes.push(`assigned the task to ${member.nickname}`);
+    });
+
+    if (changes.length > 0) {
+        const activityText = `${author.nickname} ${changes.join(', ')}.`;
+        firebaseService.logActivity(taskId, { text: activityText, author });
+    }
+    
+    // We merge the updated fields with the existing data to ensure fields like companyId are preserved.
+    const finalPayload = { ...existingTaskData, ...updatedData };
+
+    return firebaseService.updateTask(taskId, finalPayload)
         .then(() => {
             showToast('Task updated!', 'success');
         })
@@ -103,11 +121,16 @@ export const handleEditTask = async () => {
 
 export const toggleTaskStatus = (taskId, isDone) => {
     const newStatus = isDone ? 'done' : 'todo';
-    updateTaskStatus(taskId, newStatus);
+    const task = appState.tasks.find(t => t.id === taskId);
+    if (task && task.status !== newStatus) {
+        const author = { uid: appState.user.uid, nickname: appState.profile.nickname };
+        const activityText = `${author.nickname} changed the status to ${newStatus}.`;
+        firebaseService.logActivity(taskId, { text: activityText, author });
+        updateTaskStatus(taskId, newStatus);
+    }
 };
 
 export const updateTaskStatus = (taskId, newStatus) => {
-    // This is a partial update, so it's simpler and less prone to data issues.
     firebaseService.updateTask(taskId, { status: newStatus })
         .catch(err => {
             console.error("Error updating task status:", err);
@@ -115,8 +138,11 @@ export const updateTaskStatus = (taskId, newStatus) => {
         });
 };
 
+// IMPROVEMENT: Confirmation dialog now includes the task name to prevent accidents.
 export const deleteTask = (taskId) => {
-    if (confirm("Are you sure you want to delete this task?")) {
+    const task = appState.tasks.find(t => t.id === taskId);
+    const taskName = task ? task.name : 'this task';
+    if (confirm(`Are you sure you want to delete the task: "${taskName}"?\nThis action cannot be undone.`)) {
         firebaseService.deleteTask(taskId)
             .then(() => showToast('Task deleted.', 'success'))
             .catch(err => {
@@ -126,10 +152,14 @@ export const deleteTask = (taskId) => {
     }
 };
 
+// IMPROVEMENT: Added activity logging for subtask actions.
 export const addSubtask = (taskId, text) => {
     const newSubtask = { text, isCompleted: false };
     const task = appState.tasks.find(t => t.id === taskId);
     const updatedSubtasks = [...(task.subtasks || []), newSubtask];
+    const author = { uid: appState.user.uid, nickname: appState.profile.nickname };
+    const activityText = `${author.nickname} added subtask: "${text}".`;
+    firebaseService.logActivity(taskId, { text: activityText, author });
     firebaseService.updateTask(taskId, { subtasks: updatedSubtasks });
 };
 
@@ -137,12 +167,21 @@ export const toggleSubtask = (taskId, subtaskIndex, isCompleted) => {
     const task = appState.tasks.find(t => t.id === taskId);
     const updatedSubtasks = [...task.subtasks];
     updatedSubtasks[subtaskIndex].isCompleted = isCompleted;
+    const subtaskText = updatedSubtasks[subtaskIndex].text;
+    const author = { uid: appState.user.uid, nickname: appState.profile.nickname };
+    const action = isCompleted ? 'completed' : 'marked as incomplete';
+    const activityText = `${author.nickname} ${action} the subtask: "${subtaskText}".`;
+    firebaseService.logActivity(taskId, { text: activityText, author });
     firebaseService.updateTask(taskId, { subtasks: updatedSubtasks });
 };
 
 export const deleteSubtask = (taskId, subtaskIndex) => {
     const task = appState.tasks.find(t => t.id === taskId);
+    const subtaskText = task.subtasks[subtaskIndex].text;
     const updatedSubtasks = task.subtasks.filter((_, index) => index !== subtaskIndex);
+    const author = { uid: appState.user.uid, nickname: appState.profile.nickname };
+    const activityText = `${author.nickname} deleted the subtask: "${subtaskText}".`;
+    firebaseService.logActivity(taskId, { text: activityText, author });
     firebaseService.updateTask(taskId, { subtasks: updatedSubtasks });
 };
 
@@ -158,6 +197,11 @@ export const addComment = (taskId, text) => {
     firebaseService.addComment(taskId, commentData);
 };
 
+/**
+ * Parses a string for "natural language" date and priority keywords.
+ * @param {string} text The user's input string for a new task.
+ * @returns {object} A task data object with name, priority, dueDate, etc.
+ */
 const parseTaskInput = (text) => {
     let taskName = text;
     let priority = 'medium';
