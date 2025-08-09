@@ -39,18 +39,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const profile = profileSnap.data();
 
             const companies = profile.companies || [];
-            if (companies.length > 1 && !localStorage.getItem('selectedCompanyId')) {
+            const companyIdToLoad = localStorage.getItem('selectedCompanyId') || companies[0]?.companyId;
+
+            if (companyIdToLoad) {
+                initialize(companyIdToLoad);
+            } else {
                 window.location.replace('dashboard.html');
-            } else if (companies.length === 0) {
-                 window.location.replace('dashboard.html');
-            }
-            else {
-                const companyIdToLoad = localStorage.getItem('selectedCompanyId') || companies[0]?.companyId;
-                if(companyIdToLoad) {
-                    initialize(companyIdToLoad);
-                } else {
-                    window.location.replace('dashboard.html');
-                }
             }
         } else {
             if (!window.location.pathname.includes('login.html') && !window.location.pathname.includes('register.html')) {
@@ -130,8 +124,6 @@ function setupListeners() {
         }
     });
 
-    switchProject('all');
-
     appState.presenceListener = listenToCompanyPresence(appState.company.id, (users) => {
         appState.team = users;
         UImanager.renderTeamList(appState.team);
@@ -143,8 +135,10 @@ function setupListeners() {
 
     appState.notificationsListener = listenToNotifications(appState.user.uid, (notifications) => {
         appState.notifications = notifications;
-        // UImanager.updateNotificationBell(notifications); // This can be enabled when the UI element is ready
+        // UImanager.updateNotificationBell(notifications); // This can be implemented when the UI element is ready
     });
+
+    switchProject('all');
 }
 
 
@@ -221,7 +215,8 @@ function setupUI() {
         const currentPath = window.location.href;
         const basePath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
         const inviteLink = `${basePath}register.html?ref=${appState.company.referralId}`;
-        UImanager.openModal(UImanager.DOM.inviteModal, { inviteLink });
+        UImanager.openModal(UImanager.DOM.inviteModal);
+        document.getElementById('invite-link-input').value = inviteLink;
     });
 
     document.getElementById('hamburger-menu').addEventListener('click', () => {
