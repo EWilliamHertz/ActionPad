@@ -13,6 +13,7 @@ import { listenToNotifications, markNotificationsAsRead } from './services/notif
 import { initializeI18n, setLanguage } from './i18n.js';
 import * as UImanager from './ui/uiManager.js';
 import * as taskController from './taskController.js';
+import { initCommandPalette } from './ui/commandPalette.js'; // NEW: Import command palette
 import { showToast } from './toast.js';
 
 const appState = {
@@ -25,6 +26,9 @@ const appState = {
     chatListener: null,
     notificationsListener: null,
 };
+
+// Make appState globally accessible for the command palette
+window.appState = appState;
 
 document.addEventListener('DOMContentLoaded', () => {
     onAuthStateChanged(auth, async user => {
@@ -90,6 +94,7 @@ async function initialize(companyId) {
         taskController.initTaskController(appState);
         UImanager.initUIManager(appState);
         UImanager.initModalManager(appState);
+        initCommandPalette(appState, { openModal: UImanager.openModal, switchProject }); // NEW: Initialize command palette
 
         setupUI();
         setupListeners();
@@ -126,7 +131,7 @@ function setupListeners() {
 
     appState.presenceListener = listenToCompanyPresence(appState.company.id, (users) => {
         appState.team = users;
-        UImanager.renderTeamList(appState.team);
+        UImanager.renderTeamList(appState.team, appState.user.uid); // Pass current user ID
     });
 
     appState.chatListener = listenToCompanyChat(appState.company.id, (messages) => {
@@ -264,7 +269,6 @@ function setupUI() {
     taskController.setupProjectForm(appState);
     taskController.setupTaskForm();
     
-    // These were the missing initializers
     if (UImanager.setupModals) UImanager.setupModals();
     if (UImanager.setupDragDrop) UImanager.setupDragDrop();
 }
