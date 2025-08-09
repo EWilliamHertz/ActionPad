@@ -1,0 +1,97 @@
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs, query, where, serverTimestamp, onSnapshot, orderBy } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { db } from '../firebase-config.js';
+import { showToast } from '../toast.js';
+import { getCompany } from './company.js';
+
+const tasksCollection = collection(db, 'tasks');
+const projectsCollection = collection(db, 'projects');
+
+export const addTask = (taskData, companyId, author) => {
+    const language = localStorage.getItem('actionPadLanguage') || 'en';
+    return addDoc(tasksCollection, {
+        ...taskData,
+        companyId,
+        author: { uid: author.uid, nickname: author.nickname },
+        assignedTo: [],
+        subtasks: [],
+        attachments: [],
+        language,
+        order: Date.now(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+    });
+}
+
+export const getTask = (taskId) => getDoc(doc(tasksCollection, taskId));
+
+export const updateTask = (taskId, updatedData) => {
+    return updateDoc(doc(tasksCollection, taskId), { ...updatedData, updatedAt: serverTimestamp() });
+};
+
+export const deleteTask = (taskId) => deleteDoc(doc(tasksCollection, taskId));
+
+export const listenToCompanyTasks = (companyId, projectId, callback) => {
+    let q;
+    if (projectId === 'all') {
+        q = query(tasksCollection,
+            where("companyId", "==", companyId),
+            orderBy("order", "asc")
+        );
+    } else {
+        q = query(tasksCollection,
+            where("companyId", "==", companyId),
+            where("projectId", "==", projectId),
+            orderBy("order", "asc")
+        );
+    }
+
+    return onSnapshot(q, (snapshot) => {
+        const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), isNew: false }));
+        // Add a small delay and then mark as not new for visual feedback
+        setTimeout(() => {
+            callback(tasks.map(t => ({...t, isNew: false})));
+        }, 2000);
+        callback(tasks.map((t, i) => ({...t, isNew: snapshot.docChanges().some(change => change.type === 'added' && change.doc.id === t.id)})));
+
+    }, (error) => {
+        console.error("Error listening to tasks: ", error);
+        showToast("Database error: A required index is missing. Check console.", "error");
+    });
+};
+
+export const getTasksAssignedToUser = async (userId) => {
+    const q = query(tasksCollection, where("assignedTo", "array-contains", userId));
+    const querySnapshot = await getDocs(q);
+
+    const tasks = [];
+    for (const taskDoc of querySnapshot.docs) {
+        const taskData = { id: taskDoc.id, ...taskDoc.data() };
+
+        if(taskData.companyId) {
+            const companySnap = await getCompany(taskData.companyId);
+            taskData.companyName = companySnap.exists() ? companySnap.data().name : 'Unknown Company';
+        }
+        if(taskData.projectId) {
+            const projectSnap = await getDoc(doc(projectsCollection, taskData.projectId));
+            taskData.projectName = projectSnap.exists() ? projectSnap.data().name : 'No Project';
+        }
+        tasks.push(taskData);
+    }
+    return tasks;
+};
+
+export const getUpcomingDeadlines = async (userId) => {
+    const today = new Date();
+    const nextWeek = new Date();
+    nextWeek.setDate(today.getDate() + 7);
+
+    const q = query(tasksCollection,
+        where("assignedTo", "array-contains", userId),
+        where("dueDate", ">=", today.toISOString().split('T')[0]),
+        where("dueDate", "<=", nextWeek.toISOString().split('T')[0]),
+        orderBy("dueDate", "asc")
+    );
+
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
