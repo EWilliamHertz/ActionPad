@@ -4,10 +4,18 @@ import { showToast } from './toast.js';
 
 let appState = null;
 
+/**
+ * Initializes the task controller with the global application state.
+ * @param {Object} state - The main application state object.
+ */
 export const initTaskController = (state) => {
     appState = state;
 };
 
+/**
+ * Sets up the event listener for the 'add project' form.
+ * @param {Object} state - The main application state object.
+ */
 export const setupProjectForm = (state) => {
     const form = document.getElementById('add-project-form');
     form.addEventListener('submit', (e) => {
@@ -32,7 +40,9 @@ export const setupProjectForm = (state) => {
     });
 };
 
-
+/**
+ * Sets up the event listener for the 'add task' form.
+ */
 export const setupTaskForm = () => {
     document.getElementById('add-task-form').addEventListener('submit', (e) => {
         e.preventDefault();
@@ -44,6 +54,10 @@ export const setupTaskForm = () => {
     });
 };
 
+/**
+ * Handles the logic for adding a new task.
+ * @param {string} text - The raw text from the task input field.
+ */
 const handleAddTask = (text) => {
     const taskData = parseTaskInput(text);
     taskData.projectId = appState.currentProjectId === 'all' ? null : appState.currentProjectId;
@@ -61,31 +75,41 @@ const handleAddTask = (text) => {
         });
 };
 
+/**
+ * Handles the submission of the edit task form.
+ * Gathers all data from the modal and updates the task in Firestore.
+ */
 export const handleEditTask = async () => {
     const taskId = document.getElementById('edit-task-id').value;
-    
+    if (!taskId) {
+        showToast("Error: No task ID found.", "error");
+        return;
+    }
+
     const taskSnap = await firebaseService.getTask(taskId);
     if (!taskSnap.exists()) {
-        throw new Error("Task not found. It may have been deleted.");
+        showToast("Task not found. It may have been deleted.", "error");
+        throw new Error("Task not found.");
     }
     const existingTaskData = taskSnap.data();
     const oldAssignees = existingTaskData.assignedTo || [];
 
-    const selectedOptions = document.querySelectorAll('#edit-task-assignees option:checked');
-    const newAssignees = Array.from(selectedOptions).map(el => el.value);
+    // Correctly gather all selected assignee IDs from the multi-select dropdown
+    const assigneesSelect = document.getElementById('edit-task-assignees');
+    const newAssignees = Array.from(assigneesSelect.selectedOptions).map(option => option.value);
 
+    // Construct the complete updated data object from the form fields
     const updatedData = {
-        ...existingTaskData,
         name: document.getElementById('edit-task-name').value,
         description: document.getElementById('edit-task-description').value,
         dueDate: document.getElementById('edit-task-due-date').value,
         priority: document.getElementById('edit-task-priority').value,
         status: document.getElementById('edit-task-status').value,
+        projectId: document.getElementById('edit-task-project').value,
         assignedTo: newAssignees,
-        projectId: document.getElementById('edit-task-project').value
     };
 
-    // Create notifications for newly assigned users
+    // Create notifications for any newly assigned users
     newAssignees.forEach(userId => {
         if (!oldAssignees.includes(userId)) {
             firebaseService.createNotification(userId, {
@@ -95,22 +119,34 @@ export const handleEditTask = async () => {
         }
     });
 
+    // Call the update service and handle the result
     return firebaseService.updateTask(taskId, updatedData)
         .then(() => {
-            showToast('Task updated!', 'success');
+            showToast('Task updated successfully!', 'success');
         })
         .catch(err => {
             console.error("Controller caught task update error:", err);
             showToast(`Update failed: ${err.message}`, 'error');
-            throw err; 
+            throw err; // Re-throw the error to be handled by the caller if necessary
         });
 };
 
+
+/**
+ * Toggles a task's status between 'done' and 'todo' based on a checkbox.
+ * @param {string} taskId - The ID of the task to update.
+ * @param {boolean} isDone - The new checked state of the checkbox.
+ */
 export const toggleTaskStatus = (taskId, isDone) => {
     const newStatus = isDone ? 'done' : 'todo';
     updateTaskStatus(taskId, newStatus);
 };
 
+/**
+ * Updates the status of a task (e.g., 'todo', 'in-progress', 'done').
+ * @param {string} taskId - The ID of the task to update.
+ * @param {string} newStatus - The new status string.
+ */
 export const updateTaskStatus = (taskId, newStatus) => {
     firebaseService.updateTask(taskId, { status: newStatus })
         .catch(err => {
@@ -119,9 +155,14 @@ export const updateTaskStatus = (taskId, newStatus) => {
         });
 };
 
+/**
+ * Deletes a task after user confirmation.
+ * @param {string} taskId - The ID of the task to delete.
+ */
 export const deleteTask = (taskId) => {
     const task = appState.tasks.find(t => t.id === taskId);
     const taskName = task ? task.name : 'this task';
+    // Using a custom modal for confirmation would be better than window.confirm
     if (confirm(`Are you sure you want to delete the task: "${taskName}"?`)) {
         firebaseService.deleteTask(taskId)
             .then(() => showToast('Task deleted.', 'success'))
@@ -131,6 +172,8 @@ export const deleteTask = (taskId) => {
             });
     }
 };
+
+// --- Subtask, Comment, and Attachment Functions ---
 
 export const addSubtask = (taskId, text) => {
     const newSubtask = { text, isCompleted: false };
@@ -157,13 +200,12 @@ export const addComment = (taskId, text, mentions) => {
         text,
         author: {
             uid: appState.user.uid,
-            nickname: appState.profile.nickname,
+            nickname: app_state.profile.nickname,
             avatarURL: appState.profile.avatarURL || null
         }
     };
     firebaseService.addComment(taskId, commentData, mentions);
 };
-
 
 export const handleAttachmentUpload = async (e) => {
     const file = e.target.files[0];
@@ -180,7 +222,6 @@ export const handleAttachmentUpload = async (e) => {
     }
     e.target.value = ''; 
 };
-
 
 export const generateSubtasksWithAI = async () => {
     const taskId = document.getElementById('edit-task-id').value;
@@ -201,7 +242,11 @@ export const generateSubtasksWithAI = async () => {
     }
 };
 
-
+/**
+ * Parses raw text input to extract task details like priority and due date.
+ * @param {string} text - The raw text from the task input.
+ * @returns {Object} A structured task data object.
+ */
 const parseTaskInput = (text) => {
     let taskName = text;
     let priority = 'medium';
