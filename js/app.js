@@ -95,6 +95,7 @@ async function initialize(companyId) {
 
         taskController.initTaskController(appState);
         UImanager.initUIManager(appState);
+        UImanager.initModalManager(appState);
 
         setupUI();
         setupListeners();
@@ -166,7 +167,7 @@ function switchProject(projectId) {
 
     appState.tasksListener = listenToCompanyTasks(appState.company.id, projectId, (tasks) => {
         appState.tasks = tasks;
-        UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
+        UImanager.renderListView(tasks); // Example: Render the list view
     });
 }
 
@@ -248,29 +249,18 @@ function setupUI() {
         }
     });
 
-    // NEW: Command Palette Listener
-    document.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-            e.preventDefault();
-            // UImanager.openCommandPalette();
-        }
-    });
-
     document.getElementById('command-palette-input').addEventListener('input', (e) => {
         // UImanager.renderCommandPaletteResults(e.target.value.toLowerCase(), appState);
     });
 
-    // NEW: Notification Bell Listener
     document.getElementById('notification-bell').addEventListener('click', () => {
         const dropdown = document.getElementById('notification-dropdown');
         dropdown.classList.toggle('hidden');
         if(!dropdown.classList.contains('hidden')) {
-            // Mark notifications as read when dropdown is opened
             markNotificationsAsRead(appState.user.uid, appState.notifications);
         }
     });
 
-    // Language switcher in main app
     const languageSwitcher = document.querySelector('.sidebar-footer .language-switcher');
     if (languageSwitcher) {
         languageSwitcher.addEventListener('click', (e) => {
@@ -280,12 +270,8 @@ function setupUI() {
         });
     }
 
-
     taskController.setupProjectForm(appState);
     taskController.setupTaskForm();
-
-    // UImanager.setupModals();
-    // UImanager.setupEventListeners();
 }
 
 function filterTasks(tasks, searchTerm) {
