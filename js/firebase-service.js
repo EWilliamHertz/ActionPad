@@ -123,6 +123,7 @@ export const addTask = (taskData, companyId, author) => {
     });
 }
 
+// This new helper function is used by the task controller before an update.
 export const getTask = (taskId) => getDoc(doc(tasksCollection, taskId));
 
 export const updateTask = (taskId, updatedData) => {
@@ -132,25 +133,32 @@ export const updateTask = (taskId, updatedData) => {
 
 export const deleteTask = (taskId) => deleteDoc(doc(tasksCollection, taskId));
 
-// FIXED: Corrected the query logic to properly filter tasks by project.
+// THE DEFINITIVE FIX for tasks appearing in the wrong project.
 export const listenToCompanyTasks = (companyId, projectId, callback) => {
     let q;
-    const baseQuery = [where("companyId", "==", companyId)];
-
-    if (projectId !== 'all') {
-        // When a specific project is selected, add a filter for it.
-        baseQuery.push(where("projectId", "==", projectId));
+    if (projectId === 'all') {
+        // If 'All Tasks' is selected, only filter by companyId.
+        q = query(tasksCollection, 
+            where("companyId", "==", companyId), 
+            orderBy("createdAt", "desc")
+        );
+    } else {
+        // If a specific project is selected, filter by both companyId AND projectId.
+        q = query(tasksCollection, 
+            where("companyId", "==", companyId), 
+            where("projectId", "==", projectId), 
+            orderBy("createdAt", "desc")
+        );
     }
-    // Always order by creation date.
-    q = query(tasksCollection, ...baseQuery, orderBy("createdAt", "desc"));
     
     return onSnapshot(q, (snapshot) => {
         const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         callback(tasks);
     }, (error) => {
         console.error("Error listening to tasks: ", error);
-        // This could indicate a missing Firestore index. The error message in the
-        // console will have a link to create it.
+        // IMPORTANT: If this error appears in the console, it means you need to create a
+        // composite index in your Firestore database. The error message will provide a direct link to do so.
+        showToast("Database error: A required index is missing. Check console.", "error");
     });
 };
 
