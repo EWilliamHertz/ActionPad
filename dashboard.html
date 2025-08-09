@@ -26,13 +26,30 @@
         </header>
 
         <main class="dashboard-main">
-            <div class="dashboard-main-header">
-                <h2>Your Companies</h2>
-                <a href="mytasks.html" id="my-tasks-btn" class="dashboard-action-btn">View My Tasks</a>
-            </div>
-            <div id="company-cards-container" class="company-cards-grid">
+            <div class="dashboard-grid">
+                <div class="main-content">
+                    <div class="dashboard-main-header">
+                        <h2>Your Companies</h2>
+                        <a href="mytasks.html" id="my-tasks-btn" class="dashboard-action-btn">View My Tasks</a>
+                    </div>
+                    <div id="company-cards-container" class="company-cards-grid">
+                        <div class="skeleton-card"></div>
+                        <div class="skeleton-card"></div>
+                    </div>
                 </div>
-            <div class="dashboard-actions">
+                <aside class="dashboard-sidebar">
+                    <div id="upcoming-deadlines-widget" class="dashboard-widget">
+                        <h4>Upcoming Deadlines</h4>
+                        <div class="skeleton-widget-item"></div>
+                        <div class="skeleton-widget-item"></div>
+                    </div>
+                    <div id="my-activity-widget" class="dashboard-widget">
+                        <h4 data-i18n="myActivity">My Activity</h4>
+                        <p>Activity feed coming soon...</p>
+                    </div>
+                </aside>
+            </div>
+             <div class="dashboard-actions">
                 <button id="join-company-btn">Join Another Company</button>
                 <button id="create-company-btn">Create a New Company</button>
             </div>
