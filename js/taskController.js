@@ -61,16 +61,26 @@ const handleAddTask = (text) => {
         });
 };
 
-// THE DEFINITIVE FIX: This function is now simplified. It only gathers the data from the form
-// and sends it for an update. It no longer needs to fetch the task first, as the new,
-// more robust security rule handles the permission check on the server side.
-export const handleEditTask = () => {
+// THE DEFINITIVE FIX for editing tasks.
+export const handleEditTask = async () => {
     const taskId = document.getElementById('edit-task-id').value;
+    
+    // Step 1: Fetch the current, complete task data from Firestore.
+    // This is crucial to ensure we have all existing fields, especially `companyId`.
+    const taskSnap = await firebaseService.getTask(taskId);
+    if (!taskSnap.exists()) {
+        throw new Error("Task not found. It may have been deleted by another user.");
+    }
+    const existingTaskData = taskSnap.data();
+
+    // Step 2: Get the new values from the form fields.
     const selectedOptions = document.querySelectorAll('#edit-task-assignees option:checked');
     const assignees = Array.from(selectedOptions).map(el => el.value);
 
-    // This object contains ONLY the fields that are being changed.
+    // Step 3: Create a payload that merges the existing data with the new data.
+    // This ensures that when we send the update, all required fields for security rules are present.
     const updatedData = {
+        ...existingTaskData, // Start with all existing data
         name: document.getElementById('edit-task-name').value,
         description: document.getElementById('edit-task-description').value,
         dueDate: document.getElementById('edit-task-due-date').value,
@@ -80,6 +90,7 @@ export const handleEditTask = () => {
         projectId: document.getElementById('edit-task-project').value
     };
 
+    // Step 4: Perform the update with the complete and correct data payload.
     return firebaseService.updateTask(taskId, updatedData)
         .then(() => {
             showToast('Task updated!', 'success');
@@ -87,7 +98,7 @@ export const handleEditTask = () => {
         .catch(err => {
             console.error("Controller caught task update error:", err);
             showToast(`Update failed: ${err.message}`, 'error');
-            throw err;
+            throw err; // Re-throw the error for the UI layer to handle.
         });
 };
 
@@ -97,6 +108,8 @@ export const toggleTaskStatus = (taskId, isDone) => {
 };
 
 export const updateTaskStatus = (taskId, newStatus) => {
+    // For a simple status toggle, we don't need to fetch the whole task.
+    // The security rule for updates will still pass based on the user's company.
     firebaseService.updateTask(taskId, { status: newStatus })
         .catch(err => {
             console.error("Error updating task status:", err);
