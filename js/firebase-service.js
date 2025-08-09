@@ -8,7 +8,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 import {
     collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs,
-    query, where, serverTimestamp, setDoc, onSnapshot, orderBy
+    query, where, serverTimestamp, setDoc, onSnapshot, orderBy, arrayUnion
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js";
 import { showToast } from './toast.js';
@@ -27,11 +27,8 @@ export const sendVerificationEmail = (user) => firebaseSendEmailVerification(use
 export const sendPasswordReset = (email) => firebaseSendPasswordResetEmail(auth, email);
 
 export const signOut = () => {
-    const user = auth.currentUser;
-    if (user) {
-        const userStatusFirestoreRef = doc(db, 'users', user.uid);
-        updateDoc(userStatusFirestoreRef, { online: false, last_changed: serverTimestamp() });
-    }
+    // This function might need adjustment based on multi-company presence.
+    // For now, it signs out globally.
     return firebaseSignOut(auth);
 };
 
@@ -40,28 +37,86 @@ export const registerUser = async (userData) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
     await sendVerificationEmail(user);
+
     let companyId;
     let finalCompanyName = companyName;
+
     if (referralId) {
         const q = query(companiesCollection, where("referralId", "==", Number(referralId)));
         const querySnapshot = await getDocs(q);
         if (!querySnapshot.empty) {
             const companyDoc = querySnapshot.docs[0];
             companyId = companyDoc.id;
-            finalCompanyName = companyDoc.data().name;
         } else {
             throw new Error("Invalid Referral ID. Company not found.");
         }
     } else {
-        const newCompanyRef = await addDoc(companiesCollection, { name: companyName, referralId: Math.floor(100000 + Math.random() * 900000), createdAt: serverTimestamp() });
+        const newCompanyRef = await addDoc(companiesCollection, { 
+            name: companyName, 
+            referralId: Math.floor(100000 + Math.random() * 900000), 
+            createdAt: serverTimestamp() 
+        });
         companyId = newCompanyRef.id;
     }
+    
+    // NEW: User profile now stores an array of companies
     await setDoc(doc(usersCollection, user.uid), {
-        fullName, nickname, email, companyRole, companyId,
-        companyName: finalCompanyName, online: false, last_changed: serverTimestamp()
+        fullName, 
+        nickname, 
+        email,
+        companies: [{
+            companyId: companyId,
+            role: companyRole
+        }]
     });
+
+    // Store the first companyId for redirection after registration
+    localStorage.setItem('selectedCompanyId', companyId);
     return user;
 };
+
+// NEW: Function to join an existing company
+export const joinCompanyWithReferralId = async (user, referralId) => {
+    const q = query(companiesCollection, where("referralId", "==", Number(referralId)));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+        throw new Error("Invalid Referral ID. Company not found.");
+    }
+    
+    const companyDoc = querySnapshot.docs[0];
+    const companyId = companyDoc.id;
+    const userRef = doc(usersCollection, user.uid);
+
+    // Add the new company to the user's list of companies
+    // For simplicity, the role is set to 'Member'. This could be expanded upon.
+    await updateDoc(userRef, {
+        companies: arrayUnion({
+            companyId: companyId,
+            role: 'Member' 
+        })
+    });
+};
+
+// NEW: Function to create a new company for an existing user
+export const createNewCompany = async (user, companyName, userRole) => {
+    const newCompanyRef = await addDoc(companiesCollection, { 
+        name: companyName, 
+        referralId: Math.floor(100000 + Math.random() * 900000), 
+        createdAt: serverTimestamp() 
+    });
+    const companyId = newCompanyRef.id;
+    const userRef = doc(usersCollection, user.uid);
+
+    await updateDoc(userRef, {
+        companies: arrayUnion({
+            companyId: companyId,
+            role: userRole
+        })
+    });
+    return companyId;
+};
+
 
 export const getUserProfile = (userId) => getDoc(doc(usersCollection, userId));
 export const getCompany = (companyId) => getDoc(doc(companiesCollection, companyId));
@@ -80,14 +135,31 @@ export const updateUserPassword = async (currentPassword, newPassword) => {
 };
 
 // --- Presence Management (Firestore-only) ---
-export const manageUserPresence = async (user) => {
+export const manageUserPresence = async (user, companyId) => {
+    // Presence is now company-specific
     const userStatusFirestoreRef = doc(db, 'users', user.uid);
-    await updateDoc(userStatusFirestoreRef, { online: true, last_changed: serverTimestamp() });
+    await updateDoc(userStatusFirestoreRef, { 
+        online: true, 
+        last_changed: serverTimestamp(),
+        activeCompany: companyId // Track which company the user is active in
+    });
 };
 
 export const listenToCompanyPresence = (companyId, callback) => {
-    const q = query(usersCollection, where("companyId", "==", companyId));
-    return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+    // This query needs to change to look inside the companies array
+    const q = query(usersCollection, where("companies", "array-contains", { companyId: companyId }));
+    return onSnapshot(q, (snapshot) => {
+        const users = snapshot.docs.map(doc => {
+            const data = doc.data();
+            const companyInfo = data.companies.find(c => c.companyId === companyId);
+            return {
+                id: doc.id,
+                ...data,
+                companyRole: companyInfo?.role // Extract role for this company
+            };
+        });
+        callback(users);
+    });
 };
 
 
@@ -124,27 +196,22 @@ export const addTask = (taskData, companyId, author) => {
     });
 }
 
-// This new helper function is used by the task controller before an update.
 export const getTask = (taskId) => getDoc(doc(tasksCollection, taskId));
 
 export const updateTask = (taskId, updatedData) => {
-    console.log('Attempting to update task:', taskId, updatedData);
     return updateDoc(doc(tasksCollection, taskId), { ...updatedData, updatedAt: serverTimestamp() });
 };
 
 export const deleteTask = (taskId) => deleteDoc(doc(tasksCollection, taskId));
 
-// THE DEFINITIVE FIX for tasks appearing in the wrong project.
 export const listenToCompanyTasks = (companyId, projectId, callback) => {
     let q;
     if (projectId === 'all') {
-        // If 'All Tasks' is selected, only filter by companyId.
         q = query(tasksCollection, 
             where("companyId", "==", companyId), 
             orderBy("createdAt", "desc")
         );
     } else {
-        // If a specific project is selected, filter by both companyId AND projectId.
         q = query(tasksCollection, 
             where("companyId", "==", companyId), 
             where("projectId", "==", projectId), 
@@ -157,8 +224,6 @@ export const listenToCompanyTasks = (companyId, projectId, callback) => {
         callback(tasks);
     }, (error) => {
         console.error("Error listening to tasks: ", error);
-        // IMPORTANT: If this error appears in the console, it means you need to create a
-        // composite index in your Firestore database. The error message will provide a direct link to do so.
         showToast("Database error: A required index is missing. Check console.", "error");
     });
 };
@@ -196,6 +261,25 @@ export const listenToCompanyChat = (companyId, callback) => {
         const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         callback(messages);
     });
+};
+
+// --- NEW: Dashboard Data Fetching ---
+export const getCompanyDashboardData = async (companyId) => {
+    // 1. Get Company Info
+    const companySnap = await getCompany(companyId);
+    const company = companySnap.exists() ? { id: companySnap.id, ...companySnap.data() } : null;
+
+    // 2. Get all tasks for the company
+    const tasksQuery = query(tasksCollection, where("companyId", "==", companyId));
+    const tasksSnap = await getDocs(tasksQuery);
+    const tasks = tasksSnap.docs.map(doc => doc.data());
+
+    // 3. Get all members of the company
+    const membersQuery = query(usersCollection, where("companies", "array-contains", { companyId: companyId }));
+    const membersSnap = await getDocs(membersQuery);
+    const members = membersSnap.docs.map(doc => doc.data());
+
+    return { company, tasks, members };
 };
 
 
