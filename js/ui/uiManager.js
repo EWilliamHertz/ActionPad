@@ -5,8 +5,7 @@ export * from './modalManager.js';
 export * from './detailsRenderer.js';
 export * from './i18n.js';
 
-// You can also add any other UI functions that don't fit into the other modules here
-// For example, functions that manage the overall layout or user info in the header
+// --- Other UI utility functions ---
 
 export const updateUserInfo = (profile, company) => {
     if (profile) {
@@ -48,4 +47,9 @@ export const renderProjectList = (projects, currentProjectId) => {
         item.textContent = project.name;
         projectListEl.appendChild(item);
     });
+};
+
+export const initUIManager = (state) => {
+    // This can be expanded later if some UI components need direct access to the app state
+    console.log("UI Manager Initialized");
 };
