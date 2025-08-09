@@ -4,7 +4,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/fi
 import {
     signOut, getUserProfile, getCompany, listenToCompanyTasks, listenToCompanyProjects,
     manageUserPresence, listenToCompanyPresence, uploadProjectLogo, updateProject,
-    listenToCompanyChat, addChatMessage
+    listenToCompanyChat, addChatMessage, listenToNotifications, markNotificationsAsRead
 } from './firebase-service.js';
 import { initializeI18n } from './i18n.js';
 import * as uiManager from './uiManager.js';
@@ -13,9 +13,13 @@ import { showToast } from './toast.js';
 
 const appState = {
     user: null, profile: null, company: null, team: [], projects: [], tasks: [],
+    notifications: [],
     currentView: 'list-view', currentProjectId: 'all', searchTerm: '',
     tasksListener: null,
+    projectsListener: null,
+    presenceListener: null,
     chatListener: null,
+    notificationsListener: null,
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -30,27 +34,21 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const profile = profileSnap.data();
             
-            // NEW: Multi-company logic
             const companies = profile.companies || [];
             if (companies.length > 1 && !localStorage.getItem('selectedCompanyId')) {
-                // If user is in multiple companies and hasn't chosen one, go to dashboard
                 window.location.replace('dashboard.html');
             } else if (companies.length === 0) {
-                 // If user has no companies, go to dashboard to create/join one
                  window.location.replace('dashboard.html');
             }
             else {
-                // Load the selected company, or the first one by default
                 const companyIdToLoad = localStorage.getItem('selectedCompanyId') || companies[0]?.companyId;
                 if(companyIdToLoad) {
                     initialize(companyIdToLoad);
                 } else {
-                    // This case handles a user with a malformed profile (no companies array). Redirect to dashboard.
                     window.location.replace('dashboard.html');
                 }
             }
         } else {
-            // If user is not logged in, redirect to login page
             if (!window.location.pathname.includes('login.html') && !window.location.pathname.includes('register.html')) {
                 window.location.replace('login.html');
             }
@@ -84,7 +82,6 @@ async function initialize(companyId) {
         appState.profile = { 
             uid: appState.user.uid, 
             ...fullProfile,
-            // Add current company role to top-level of profile for easy access
             companyRole: companyMembership.role 
         };
         
@@ -105,14 +102,19 @@ async function initialize(companyId) {
     } catch (error) {
         console.error("CRITICAL INITIALIZATION FAILURE:", error);
         showToast(error.message || 'Could not initialize the application.', 'error');
-        // Clear selected company on error and go to dashboard
         localStorage.removeItem('selectedCompanyId');
         window.location.href = 'dashboard.html';
     }
 }
 
 function setupListeners() {
-    listenToCompanyProjects(appState.company.id, (projects) => {
+    // Clear existing listeners to prevent duplicates on re-initialization
+    if (appState.projectsListener) appState.projectsListener();
+    if (appState.presenceListener) appState.presenceListener();
+    if (appState.chatListener) appState.chatListener();
+    if (appState.notificationsListener) appState.notificationsListener();
+
+    appState.projectsListener = listenToCompanyProjects(appState.company.id, (projects) => {
         appState.projects = projects;
         uiManager.renderProjectList(appState.projects, appState.currentProjectId);
         if (appState.currentProjectId !== 'all') {
@@ -125,14 +127,18 @@ function setupListeners() {
     
     switchProject('all');
     
-    listenToCompanyPresence(appState.company.id, (users) => {
+    appState.presenceListener = listenToCompanyPresence(appState.company.id, (users) => {
         appState.team = users;
         uiManager.renderTeamList(appState.team);
     });
 
-    if (appState.chatListener) appState.chatListener();
     appState.chatListener = listenToCompanyChat(appState.company.id, (messages) => {
         uiManager.renderChatMessages(messages, appState.user.uid);
+    });
+
+    appState.notificationsListener = listenToNotifications(appState.user.uid, (notifications) => {
+        appState.notifications = notifications;
+        uiManager.updateNotificationBell(notifications);
     });
 }
 
@@ -180,7 +186,6 @@ function setupUI() {
     uiManager.updateUserInfo(appState.profile, appState.company);
     
     document.getElementById('logout-button').addEventListener('click', () => {
-        // Clear the selected company when logging out
         localStorage.removeItem('selectedCompanyId');
         signOut();
     });
@@ -238,6 +243,29 @@ function setupUI() {
             input.value = '';
         }
     });
+    
+    // NEW: Command Palette Listener
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            e.preventDefault();
+            uiManager.openCommandPalette();
+        }
+    });
+    
+    document.getElementById('command-palette-input').addEventListener('input', (e) => {
+        uiManager.renderCommandPaletteResults(e.target.value.toLowerCase(), appState);
+    });
+    
+    // NEW: Notification Bell Listener
+    document.getElementById('notification-bell').addEventListener('click', () => {
+        const dropdown = document.getElementById('notification-dropdown');
+        dropdown.classList.toggle('hidden');
+        if(!dropdown.classList.contains('hidden')) {
+            // Mark notifications as read when dropdown is opened
+            markNotificationsAsRead(appState.user.uid, appState.notifications);
+        }
+    });
+
 
     taskController.setupProjectForm(appState);
     taskController.setupTaskForm();
