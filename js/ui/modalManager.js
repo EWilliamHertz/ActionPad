@@ -60,21 +60,42 @@ export const openModal = (modalElement, task = null) => {
         renderSubtasks(task);
         renderAttachments(task);
 
+        // Add event listeners for AI and subtask creation
+        const aiSubtaskBtn = document.getElementById('ai-subtask-btn');
+        if (aiSubtaskBtn) {
+            // Use .onclick to ensure we're not adding duplicate listeners
+            aiSubtaskBtn.onclick = () => taskController.generateSubtasksWithAI();
+        }
+
+        const newSubtaskInput = document.getElementById('new-subtask-input');
+        if (newSubtaskInput) {
+            // Use .onkeydown for the same reason
+            newSubtaskInput.onkeydown = (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault(); // Prevent form submission
+                    if (newSubtaskInput.value.trim()) {
+                        taskController.addSubtask(task.id, newSubtaskInput.value.trim());
+                        newSubtaskInput.value = '';
+                    }
+                }
+            };
+        }
+
         // Set up a real-time listener for comments for this specific task
         if (activeCommentsListener) activeCommentsListener(); // Unsubscribe from previous listener
         activeCommentsListener = listenToTaskComments(task.id, (comments) => {
             renderComments(comments);
         });
 
-        // --- FIX: Attach event listener here, with a safety check ---
         const editTaskForm = document.getElementById('edit-task-form');
         const saveButton = editTaskForm.querySelector('button[type="submit"]');
 
-        // SAFETY CHECK: Only proceed if the button is actually found.
         if (saveButton) {
+            // Clone and replace the button to remove any old event listeners
             const newSaveButton = saveButton.cloneNode(true);
             saveButton.parentNode.replaceChild(newSaveButton, saveButton);
 
+            // Add the single, correct event listener for this modal instance
             newSaveButton.addEventListener('click', async (e) => {
                 e.preventDefault();
                 newSaveButton.disabled = true;
@@ -90,7 +111,6 @@ export const openModal = (modalElement, task = null) => {
                 }
             });
         } else {
-            // This is the new, more detailed error log.
             console.error("CRITICAL ERROR: Could not find the 'Save Changes' button (button[type='submit']) inside the task form.");
             if(editTaskForm) {
                 console.log("The content of the form at the time of the error was:", editTaskForm.innerHTML);
@@ -99,7 +119,6 @@ export const openModal = (modalElement, task = null) => {
             }
         }
     }
-    // This line will now be reached, allowing the modal to open.
     modalElement.classList.remove('hidden');
 };
 
