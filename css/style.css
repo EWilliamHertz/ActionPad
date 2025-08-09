@@ -1268,3 +1268,108 @@ main { padding: 2rem; overflow-y: auto; }
     color: var(--primary-color);
     background-color: var(--background-color);
 }
+
+/* --- Styles for Company Settings Page --- */
+.settings-main .settings-card p {
+    color: var(--subtle-text-color);
+    margin-top: -1rem;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+}
+
+.member-roles-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.member-role-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+.member-role-item:last-child {
+    border-bottom: none;
+}
+
+.member-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+.member-info .avatar-small {
+    width: 40px;
+    height: 40px;
+}
+.member-name {
+    font-weight: 600;
+}
+.member-email {
+    color: var(--subtle-text-color);
+    font-size: 0.85rem;
+}
+
+.role-selector select {
+    padding: 0.5rem 0.8rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+.role-selector select:disabled {
+    background-color: #f8f9fa;
+    color: var(--subtle-text-color);
+    border-style: dashed;
+}
+
+.settings-actions {
+    margin-top: 2rem;
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* --- Styles for Dashboard Company Card Settings Link --- */
+.company-card-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: auto; /* Pushes to the bottom */
+}
+.company-card-actions .switch-company-btn {
+    flex-grow: 1;
+}
+.company-card-actions .settings-btn {
+    padding: 0.8rem;
+    background-color: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+.company-card-actions .settings-btn:hover {
+    background-color: #e9ecef;
+}
+
+/* --- Styles for Task Filter/Sort Controls --- */
+.task-controls {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.task-controls .form-group {
+    margin: 0;
+}
+.task-controls .form-group label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    color: var(--subtle-text-color);
+}
+.task-controls select {
+    background-color: var(--surface-color);
+}
