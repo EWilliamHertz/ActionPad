@@ -1,3 +1,4 @@
+// FILE: js/dashboard.js
 import { auth } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js';
 import { 
@@ -7,7 +8,7 @@ import {
     joinCompanyWithReferralId,
     createNewCompany,
     getUpcomingDeadlines
-} from './services/index.js'; // Assuming a new index.js for services
+} from './services/index.js';
 import { showToast } from './toast.js';
 
 let currentUser = null;
@@ -172,10 +173,12 @@ document.querySelectorAll('.modal-close').forEach(btn => {
 document.getElementById('join-company-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const referralId = document.getElementById('join-referral-id').value;
+    const userRole = document.getElementById('join-company-role').value; // READ THE ROLE FROM THE NEW INPUT
     try {
-        await joinCompanyWithReferralId(currentUser, referralId);
+        // PASS THE ROLE TO THE FUNCTION
+        await joinCompanyWithReferralId(currentUser, referralId, userRole);
         showToast('Successfully joined company!', 'success');
-        location.reload();
+        location.reload(); // Reload the page to show the new company
     } catch (error) {
         showToast(error.message, 'error');
     }
