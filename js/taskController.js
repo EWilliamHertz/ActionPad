@@ -61,6 +61,8 @@ const handleAddTask = (text) => {
         });
 };
 
+// FIXED: This function now returns the promise from the update operation,
+// allowing the UI layer to await its completion and handle the result.
 export const handleEditTask = () => {
     const taskId = document.getElementById('edit-task-id').value;
     const selectedOptions = document.querySelectorAll('#edit-task-assignees option:checked');
@@ -76,13 +78,8 @@ export const handleEditTask = () => {
         projectId: document.getElementById('edit-task-project').value
     };
 
-    firebaseService.updateTask(taskId, taskData)
-        .then(() => showToast('Task updated!', 'success'))
-        .catch(err => {
-            console.error("Error updating task:", err);
-            // FIX: Provide detailed error feedback to the user.
-            showToast(`Update failed: ${err.message}`, 'error');
-        });
+    // Return the promise so the UI can await it.
+    return firebaseService.updateTask(taskId, taskData);
 };
 
 export const toggleTaskStatus = (taskId, isDone) => {
@@ -99,7 +96,7 @@ export const updateTaskStatus = (taskId, newStatus) => {
 };
 
 export const deleteTask = (taskId) => {
-    if (confirm("Are you sure you want to delete this task? Only the original creator can do this.")) {
+    if (confirm("Are you sure you want to delete this task?")) {
         firebaseService.deleteTask(taskId)
             .then(() => showToast('Task deleted.', 'success'))
             .catch(err => {
