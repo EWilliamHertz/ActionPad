@@ -25,31 +25,38 @@ export const setupModals = () => {
     // Specific logic for the task edit form
     const editTaskForm = document.getElementById('edit-task-form');
     if (editTaskForm) {
-        console.log("DEBUG: Found edit-task-form. Attaching submit listener.", editTaskForm);
+        // NEW DEBUGGING STEP: Listen for a CLICK on the button instead of SUBMIT on the form.
+        const saveButton = editTaskForm.querySelector('button[type="submit"]');
         
-        editTaskForm.addEventListener('submit', async (e) => {
-            // This is the most important log. If you see this, the button click is working.
-            console.log("%cDEBUG: Edit task form SUBMIT event detected!", "color: green; font-weight: bold;");
+        if (saveButton) {
+            console.log("DEBUG: Found save button. Attaching CLICK listener.", saveButton);
             
-            e.preventDefault(); // Prevent default form submission
+            saveButton.addEventListener('click', async (e) => {
+                // This is the new most important log.
+                console.log("%cDEBUG: Save Changes button CLICK event detected!", "background: #222; color: #bada55; font-size: 14px;");
+                
+                e.preventDefault(); // Prevent any default button behavior
 
-            const saveButton = editTaskForm.querySelector('button[type="submit"]');
-            saveButton.disabled = true;
-            saveButton.textContent = 'Saving...';
+                saveButton.disabled = true;
+                saveButton.textContent = 'Saving...';
 
-            try {
-                // Now we call the function with the other logs
-                await taskController.handleEditTask();
-                closeModal(document.getElementById('task-modal'));
-            } catch (err) {
-                // This will catch errors from handleEditTask if it runs
-                console.error("UI layer caught task update error:", err);
-            } finally {
-                // This will run whether the update succeeds or fails
-                saveButton.disabled = false;
-                saveButton.textContent = 'Save Changes';
-            }
-        });
+                try {
+                    // Now we call the function with the other logs
+                    await taskController.handleEditTask();
+                    closeModal(document.getElementById('task-modal'));
+                } catch (err) {
+                    // This will catch errors from handleEditTask if it runs
+                    console.error("UI layer caught task update error:", err);
+                } finally {
+                    // This will run whether the update succeeds or fails
+                    saveButton.disabled = false;
+                    saveButton.textContent = 'Save Changes';
+                }
+            });
+        } else {
+            console.error("DEBUG: CRITICAL - Could not find the 'Save Changes' button inside the form.");
+        }
+
     } else {
         console.error("DEBUG: CRITICAL - Could not find #edit-task-form to attach listener.");
     }
