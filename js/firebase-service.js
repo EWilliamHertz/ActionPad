@@ -34,7 +34,6 @@ export const signOut = () => {
     const user = auth.currentUser;
     if (user) {
         const userStatusFirestoreRef = doc(db, '/users/' + user.uid);
-        // Set user to offline in Firestore on manual sign-out.
         updateDoc(userStatusFirestoreRef, { online: false, last_changed: serverTimestamp() }).catch(err => console.error("Error signing out:", err));
     }
     return firebaseSignOut(auth);
@@ -89,7 +88,7 @@ export const updateUserPassword = async (currentPassword, newPassword) => {
     await updatePassword(user, newPassword);
 };
 
-// --- Presence Management (FIXED) ---
+// --- Presence Management ---
 export const manageUserPresence = (user) => {
     const userStatusDatabaseRef = ref(rtdb, '/status/' + user.uid);
     const userStatusFirestoreRef = doc(db, '/users/' + user.uid);
@@ -179,7 +178,7 @@ export const listenToTaskComments = (taskId, callback) => {
 };
 
 
-// --- NEW: Team Chat ---
+// --- Team Chat ---
 export const addChatMessage = (companyId, author, text) => {
     return addDoc(chatCollection, {
         companyId,
@@ -198,13 +197,15 @@ export const listenToCompanyChat = (companyId, callback) => {
 };
 
 
-// --- NEW: Translation Service ---
+// --- FIXED: Translation Service ---
 export const translateText = async (text, targetLanguage) => {
     if (!text || !targetLanguage) return text;
 
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`;
+    // Using a more recent, faster model for translation tasks.
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
     
-    const prompt = `Translate the following text to ${targetLanguage}: "${text}"`;
+    // A more direct prompt for better results.
+    const prompt = `Translate this text to ${targetLanguage}: "${text}"`;
 
     try {
         const response = await fetch(apiUrl, {
@@ -218,15 +219,20 @@ export const translateText = async (text, targetLanguage) => {
         });
 
         if (!response.ok) {
-            const errorBody = await response.text();
+            const errorBody = await response.json();
             console.error("Translation API Error:", response.status, errorBody);
             return text; // Return original text on API error
         }
 
         const data = await response.json();
-        const translatedText = data.candidates[0]?.content?.parts[0]?.text;
         
-        return translatedText ? translatedText.trim() : text;
+        // Improved response parsing with error checking
+        if (data.candidates && data.candidates.length > 0 && data.candidates[0].content?.parts[0]?.text) {
+            return data.candidates[0].content.parts[0].text.trim();
+        } else {
+            console.error("Invalid translation response structure:", data);
+            return text; // Return original if response is not as expected
+        }
     } catch (error) {
         console.error('Failed to fetch translation:', error);
         return text; // Return original text on network error
