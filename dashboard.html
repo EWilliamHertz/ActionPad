@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Dashboard - ActionPad</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="toast-container"></div>
+    <div class="dashboard-page-container">
+        <header class="main-header">
+            <div class="header-left">
+                <h1>ActionPad Dashboard</h1>
+            </div>
+            <div class="header-controls">
+                 <div id="user-info">
+                    <img id="user-avatar-header" src="https://placehold.co/40x40/E9ECEF/495057?text=A" alt="User Avatar" class="avatar-header">
+                    <div>
+                        <span id="user-nickname"></span>
+                    </div>
+                </div>
+                <button id="logout-button">Logout</button>
+            </div>
+        </header>
+
+        <main class="dashboard-main">
+            <h2>Your Companies</h2>
+            <div id="company-cards-container" class="company-cards-grid">
+                <!-- Company cards will be dynamically inserted here -->
+            </div>
+            <div class="dashboard-actions">
+                <button id="join-company-btn">Join Another Company</button>
+                <button id="create-company-btn">Create a New Company</button>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals for joining/creating companies -->
+    <div id="join-company-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <button class="modal-close">&times;</button>
+            <h3>Join an Existing Company</h3>
+            <form id="join-company-form">
+                <div class="form-group">
+                    <label for="join-referral-id">Company Referral ID</label>
+                    <input type="text" id="join-referral-id" required>
+                </div>
+                <button type="submit">Join Company</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="create-company-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <button class="modal-close">&times;</button>
+            <h3>Create a New Company</h3>
+            <form id="create-company-form">
+                <div class="form-group">
+                    <label for="create-company-name">Company Name</label>
+                    <input type="text" id="create-company-name" required>
+                </div>
+                 <div class="form-group">
+                    <label for="create-company-role">Your Role</label>
+                    <input type="text" id="create-company-role" required>
+                </div>
+                <button type="submit">Create and Switch</button>
+            </form>
+        </div>
+    </div>
+
+    <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>
