@@ -1,5 +1,5 @@
 // FILE: js/taskController.js
-import * as firebaseService from './firebase-service.js';
+import * as firebaseService from './services/index.js';
 import { showToast } from './toast.js';
 
 let appState = null;
@@ -152,19 +152,7 @@ export const deleteSubtask = (taskId, subtaskIndex) => {
     firebaseService.updateTask(taskId, { subtasks: updatedSubtasks });
 };
 
-export const addComment = (taskId, text) => {
-    // Basic @mention parsing
-    const mentions = new Set();
-    const mentionRegex = /@(\w+)/g;
-    let match;
-    while ((match = mentionRegex.exec(text)) !== null) {
-        const nickname = match[1];
-        const user = appState.team.find(u => u.nickname.toLowerCase() === nickname.toLowerCase());
-        if(user) {
-            mentions.add(user.id);
-        }
-    }
-
+export const addComment = (taskId, text, mentions) => {
     const commentData = {
         text,
         author: {
@@ -173,10 +161,10 @@ export const addComment = (taskId, text) => {
             avatarURL: appState.profile.avatarURL || null
         }
     };
-    firebaseService.addComment(taskId, commentData, Array.from(mentions));
+    firebaseService.addComment(taskId, commentData, mentions);
 };
 
-// NEW: Handle file attachment
+
 export const handleAttachmentUpload = async (e) => {
     const file = e.target.files[0];
     const taskId = document.getElementById('edit-task-id').value;
@@ -190,11 +178,10 @@ export const handleAttachmentUpload = async (e) => {
         console.error("Attachment upload failed:", error);
         showToast('Attachment upload failed.', 'error');
     }
-    // Clear the input value to allow uploading the same file again
     e.target.value = ''; 
 };
 
-// NEW: Generate subtasks with AI
+
 export const generateSubtasksWithAI = async () => {
     const taskId = document.getElementById('edit-task-id').value;
     const taskName = document.getElementById('edit-task-name').value;
