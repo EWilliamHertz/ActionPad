@@ -64,26 +64,40 @@ function createCompanyCard(data, membership) {
     card.dataset.companyId = membership.companyId;
 
     const { company, tasks, members } = data;
-    const openTasks = tasks.filter(t => t.status !== 'done').length;
+    
+    // Calculations for enhanced UI
+    const totalTasks = tasks.length;
+    const completedTasks = tasks.filter(t => t.status === 'done').length;
+    const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+    const lastActivity = tasks.length > 0 ? new Date(tasks[0].updatedAt.seconds * 1000).toLocaleDateString() : 'N/A';
+    const memberAvatars = members.slice(0, 5).map(member => {
+        const avatarSrc = member.avatarURL || `https://placehold.co/32x32/E9ECEF/495057?text=${member.nickname.charAt(0).toUpperCase()}`;
+        return `<img src="${avatarSrc}" alt="${member.nickname}" class="avatar-small">`;
+    }).join('');
 
     card.innerHTML = `
         <div class="company-card-header">
             <h3>${company.name}</h3>
             <p>Your role: ${membership.role}</p>
         </div>
+        <div class="company-card-progress">
+            <div class="progress-bar-container">
+                <div class="progress-bar" style="width: ${progress}%;"></div>
+            </div>
+            <span class="progress-text">${completedTasks} / ${totalTasks} tasks done</span>
+        </div>
         <div class="company-card-body">
-            <div class="stat">
-                <span class="stat-value">${openTasks}</span>
-                <span class="stat-label">Open Tasks</span>
-            </div>
-            <div class="stat">
-                <span class="stat-value">${tasks.length}</span>
-                <span class="stat-label">Total Tasks</span>
-            </div>
             <div class="stat">
                 <span class="stat-value">${members.length}</span>
                 <span class="stat-label">Members</span>
             </div>
+             <div class="stat">
+                <span class="stat-value">${lastActivity}</span>
+                <span class="stat-label">Last Active</span>
+            </div>
+        </div>
+        <div class="company-card-members">
+            ${memberAvatars}
         </div>
         <div class="company-card-footer">
             <button class="switch-company-btn">Go to Company</button>
@@ -97,6 +111,7 @@ function createCompanyCard(data, membership) {
 
     return card;
 }
+
 
 // Modal Handling
 const joinModal = document.getElementById('join-company-modal');
