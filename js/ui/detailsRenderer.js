@@ -1,4 +1,7 @@
+// FILE: js/ui/detailsRenderer.js
 import * as taskController from '../taskController.js';
+import { formatDateTime } from './utils.js'; // <-- IMPORT FROM UTILS
+import { renderTranslatedText } from './i18n.js';
 
 export const renderSubtasks = (task) => {
     const subtasksList = document.getElementById('subtasks-list');
