@@ -10,10 +10,8 @@ export const initModalManager = (state) => {
     appState = state;
 }
 
+// This function now only handles general modal closing behavior.
 export const setupModals = () => {
-    console.log("%cDEBUG: setupModals() function called.", "color: orange; font-weight: bold;");
-
-    // General modal close logic
     document.querySelectorAll('.modal-overlay').forEach(modal => {
         modal.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal-overlay') || e.target.classList.contains('modal-close')) {
@@ -21,48 +19,9 @@ export const setupModals = () => {
             }
         });
     });
-
-    // Specific logic for the task edit form
-    const editTaskForm = document.getElementById('edit-task-form');
-    if (editTaskForm) {
-        // NEW DEBUGGING STEP: Listen for a CLICK on the button instead of SUBMIT on the form.
-        const saveButton = editTaskForm.querySelector('button[type="submit"]');
-        
-        if (saveButton) {
-            console.log("DEBUG: Found save button. Attaching CLICK listener.", saveButton);
-            
-            saveButton.addEventListener('click', async (e) => {
-                // This is the new most important log.
-                console.log("%cDEBUG: Save Changes button CLICK event detected!", "background: #222; color: #bada55; font-size: 14px;");
-                
-                e.preventDefault(); // Prevent any default button behavior
-
-                saveButton.disabled = true;
-                saveButton.textContent = 'Saving...';
-
-                try {
-                    // Now we call the function with the other logs
-                    await taskController.handleEditTask();
-                    closeModal(document.getElementById('task-modal'));
-                } catch (err) {
-                    // This will catch errors from handleEditTask if it runs
-                    console.error("UI layer caught task update error:", err);
-                } finally {
-                    // This will run whether the update succeeds or fails
-                    saveButton.disabled = false;
-                    saveButton.textContent = 'Save Changes';
-                }
-            });
-        } else {
-            console.error("DEBUG: CRITICAL - Could not find the 'Save Changes' button inside the form.");
-        }
-
-    } else {
-        console.error("DEBUG: CRITICAL - Could not find #edit-task-form to attach listener.");
-    }
 };
 
-
+// The logic for handling the save button is now inside openModal.
 export const openModal = (modalElement, task = null) => {
     if (!modalElement) return;
 
@@ -105,6 +64,30 @@ export const openModal = (modalElement, task = null) => {
         if (activeCommentsListener) activeCommentsListener(); // Unsubscribe from previous listener
         activeCommentsListener = listenToTaskComments(task.id, (comments) => {
             renderComments(comments);
+        });
+
+        // --- FIX: Attach event listener here, when the modal is guaranteed to be ready ---
+        const editTaskForm = document.getElementById('edit-task-form');
+        const saveButton = editTaskForm.querySelector('button[type="submit"]');
+
+        // To prevent multiple listeners from being added, we replace the button with a clone of itself.
+        // This is a clean way to remove all old event listeners before adding a new one.
+        const newSaveButton = saveButton.cloneNode(true);
+        saveButton.parentNode.replaceChild(newSaveButton, saveButton);
+
+        newSaveButton.addEventListener('click', async (e) => {
+            e.preventDefault();
+            newSaveButton.disabled = true;
+            newSaveButton.textContent = 'Saving...';
+            try {
+                await taskController.handleEditTask();
+                closeModal(document.getElementById('task-modal'));
+            } catch (err) {
+                console.error("UI layer caught task update error:", err);
+            } finally {
+                newSaveButton.disabled = false;
+                newSaveButton.textContent = 'Save Changes';
+            }
         });
     }
     modalElement.classList.remove('hidden');
