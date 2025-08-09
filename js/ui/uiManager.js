@@ -4,6 +4,7 @@ export * from './taskRenderer.js';
 export * from './modalManager.js';
 export * from './detailsRenderer.js';
 export * from './i18n.js';
+export * from './sidebarRenderer.js'; // <-- ADD THIS LINE
 
 // --- Other UI utility functions ---
 
