@@ -134,16 +134,16 @@ function setupListeners() {
 
     appState.presenceListener = listenToCompanyPresence(appState.company.id, (users) => {
         appState.team = users;
-        // UImanager.renderTeamList(appState.team); // This will be handled inside a proper UI component later
+        UImanager.renderTeamList(appState.team); // UNCOMMENTED THIS
     });
 
     appState.chatListener = listenToCompanyChat(appState.company.id, (messages) => {
-        // UImanager.renderChatMessages(messages, appState.user.uid); // This will be handled inside a proper UI component later
+        UImanager.renderChatMessages(messages, appState.user.uid); // UNCOMMENTED THIS
     });
 
     appState.notificationsListener = listenToNotifications(appState.user.uid, (notifications) => {
         appState.notifications = notifications;
-        // UImanager.updateNotificationBell(notifications); // This will be handled inside a proper UI component later
+        // UImanager.updateNotificationBell(notifications); // This can be uncommented once the UI element exists
     });
 }
 
