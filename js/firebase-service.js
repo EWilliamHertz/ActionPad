@@ -13,13 +13,7 @@ import {
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js";
 import { showToast } from './toast.js';
 
-const usersCollection = collection(db, 'users');
-const companiesCollection = collection(db, 'companies');
-const tasksCollection = collection(db, 'tasks');
-const projectsCollection = collection(db, 'projects');
-const chatCollection = collection(db, 'team_chat');
-
-const GEMINI_API_KEY = "AIzaSyC9VG3fpf0VAsKfWgJE60lGWcmH6qObCN0"; // Replace with your actual key
+const GEMINI_API_KEY = "AIzaSyC9VG3fpf0VAsKfWgJE60lGWcmH6qObCN0";
 
 // --- Authentication & User Management ---
 export const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
@@ -39,7 +33,7 @@ export const registerUser = async (userData) => {
     let companyId;
 
     if (referralId) {
-        const q = query(companiesCollection, where("referralId", "==", Number(referralId)));
+        const q = query(collection(db, 'companies'), where("referralId", "==", Number(referralId)));
         const querySnapshot = await getDocs(q);
         if (!querySnapshot.empty) {
             const companyDoc = querySnapshot.docs[0];
@@ -48,7 +42,7 @@ export const registerUser = async (userData) => {
             throw new Error("Invalid Referral ID. Company not found.");
         }
     } else {
-        const newCompanyRef = await addDoc(companiesCollection, { 
+        const newCompanyRef = await addDoc(collection(db, 'companies'), { 
             name: companyName, 
             referralId: Math.floor(100000 + Math.random() * 900000), 
             createdAt: serverTimestamp() 
@@ -56,7 +50,7 @@ export const registerUser = async (userData) => {
         companyId = newCompanyRef.id;
     }
     
-    await setDoc(doc(usersCollection, user.uid), {
+    await setDoc(doc(collection(db, 'users'), user.uid), {
         fullName, 
         nickname, 
         email,
@@ -64,7 +58,6 @@ export const registerUser = async (userData) => {
             companyId: companyId,
             role: companyRole
         }],
-        // NEW: Add a simple array of IDs for efficient querying.
         companyIds: [companyId]
     });
 
@@ -73,7 +66,7 @@ export const registerUser = async (userData) => {
 };
 
 export const joinCompanyWithReferralId = async (user, referralId) => {
-    const q = query(companiesCollection, where("referralId", "==", Number(referralId)));
+    const q = query(collection(db, 'companies'), where("referralId", "==", Number(referralId)));
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
@@ -82,9 +75,8 @@ export const joinCompanyWithReferralId = async (user, referralId) => {
     
     const companyDoc = querySnapshot.docs[0];
     const companyId = companyDoc.id;
-    const userRef = doc(usersCollection, user.uid);
+    const userRef = doc(collection(db, 'users'), user.uid);
 
-    // NEW: Update both the detailed array and the simple ID array.
     await updateDoc(userRef, {
         companies: arrayUnion({
             companyId: companyId,
@@ -95,15 +87,14 @@ export const joinCompanyWithReferralId = async (user, referralId) => {
 };
 
 export const createNewCompany = async (user, companyName, userRole) => {
-    const newCompanyRef = await addDoc(companiesCollection, { 
+    const newCompanyRef = await addDoc(collection(db, 'companies'), { 
         name: companyName, 
         referralId: Math.floor(100000 + Math.random() * 900000), 
         createdAt: serverTimestamp() 
     });
     const companyId = newCompanyRef.id;
-    const userRef = doc(usersCollection, user.uid);
+    const userRef = doc(collection(db, 'users'), user.uid);
 
-    // NEW: Update both arrays here as well.
     await updateDoc(userRef, {
         companies: arrayUnion({
             companyId: companyId,
@@ -115,8 +106,8 @@ export const createNewCompany = async (user, companyName, userRole) => {
 };
 
 
-export const getUserProfile = (userId) => getDoc(doc(usersCollection, userId));
-export const getCompany = (companyId) => getDoc(doc(companiesCollection, companyId));
+export const getUserProfile = (userId) => getDoc(doc(collection(db, 'users'), userId));
+export const getCompany = (companyId) => getDoc(doc(collection(db, 'companies'), companyId));
 export const updateUserProfile = (userId, newData) => updateDoc(doc(db, 'users', userId), newData);
 export const uploadAvatar = async (userId, file) => {
     const filePath = `avatars/${userId}/${file.name}`;
@@ -142,8 +133,7 @@ export const manageUserPresence = async (user, companyId) => {
 };
 
 export const listenToCompanyPresence = (companyId, callback) => {
-    // UPDATED: This query is now correct and efficient.
-    const q = query(usersCollection, where("companyIds", "array-contains", companyId));
+    const q = query(collection(db, 'users'), where("companyIds", "array-contains", companyId));
     return onSnapshot(q, (snapshot) => {
         const users = snapshot.docs.map(doc => {
             const data = doc.data();
@@ -160,7 +150,7 @@ export const listenToCompanyPresence = (companyId, callback) => {
 
 
 // --- Projects ---
-export const addProject = (projectData) => addDoc(projectsCollection, { ...projectData, createdAt: serverTimestamp() });
+export const addProject = (projectData) => addDoc(collection(db, 'projects'), { ...projectData, createdAt: serverTimestamp() });
 export const updateProject = (projectId, data) => updateDoc(doc(db, 'projects', projectId), data);
 export const uploadProjectLogo = async (projectId, file) => {
     const filePath = `project_logos/${projectId}/${file.name}`;
@@ -169,7 +159,7 @@ export const uploadProjectLogo = async (projectId, file) => {
     return getDownloadURL(fileRef);
 };
 export const listenToCompanyProjects = (companyId, callback) => {
-    const q = query(projectsCollection, where("companyId", "==", companyId));
+    const q = query(collection(db, 'projects'), where("companyId", "==", companyId));
     return onSnapshot(q, (snapshot) => {
         const projects = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         callback(projects);
@@ -179,7 +169,7 @@ export const listenToCompanyProjects = (companyId, callback) => {
 // --- Tasks ---
 export const addTask = (taskData, companyId, author) => {
     const language = localStorage.getItem('actionPadLanguage') || 'en';
-    return addDoc(tasksCollection, { 
+    return addDoc(collection(db, 'tasks'), { 
         ...taskData, 
         companyId, 
         author: { uid: author.uid, nickname: author.nickname }, 
@@ -193,21 +183,21 @@ export const addTask = (taskData, companyId, author) => {
     });
 }
 
-export const getTask = (taskId) => getDoc(doc(tasksCollection, taskId));
+export const getTask = (taskId) => getDoc(doc(collection(db, 'tasks'), taskId));
 export const updateTask = (taskId, updatedData) => {
-    return updateDoc(doc(tasksCollection, taskId), { ...updatedData, updatedAt: serverTimestamp() });
+    return updateDoc(doc(collection(db, 'tasks'), taskId), { ...updatedData, updatedAt: serverTimestamp() });
 };
-export const deleteTask = (taskId) => deleteDoc(doc(tasksCollection, taskId));
+export const deleteTask = (taskId) => deleteDoc(doc(collection(db, 'tasks'), taskId));
 
 export const listenToCompanyTasks = (companyId, projectId, callback) => {
     let q;
     if (projectId === 'all') {
-        q = query(tasksCollection, 
+        q = query(collection(db, 'tasks'), 
             where("companyId", "==", companyId), 
             orderBy("order", "asc")
         );
     } else {
-        q = query(tasksCollection, 
+        q = query(collection(db, 'tasks'), 
             where("companyId", "==", companyId), 
             where("projectId", "==", projectId), 
             orderBy("order", "asc")
@@ -224,7 +214,7 @@ export const listenToCompanyTasks = (companyId, projectId, callback) => {
 };
 
 export const getTasksAssignedToUser = async (userId) => {
-    const q = query(tasksCollection, where("assignedTo", "array-contains", userId));
+    const q = query(collection(db, 'tasks'), where("assignedTo", "array-contains", userId));
     const querySnapshot = await getDocs(q);
     
     const tasks = [];
@@ -236,7 +226,7 @@ export const getTasksAssignedToUser = async (userId) => {
             taskData.companyName = companySnap.exists() ? companySnap.data().name : 'Unknown Company';
         }
         if(taskData.projectId) {
-            const projectSnap = await getDoc(doc(projectsCollection, taskData.projectId));
+            const projectSnap = await getDoc(doc(collection(db, 'projects'), taskData.projectId));
             taskData.projectName = projectSnap.exists() ? projectSnap.data().name : 'No Project';
         }
         tasks.push(taskData);
@@ -271,7 +261,7 @@ export const listenToTaskComments = (taskId, callback) => {
 
 // --- Team Chat ---
 export const addChatMessage = (companyId, author, text) => {
-    return addDoc(chatCollection, {
+    return addDoc(collection(db, 'team_chat'), {
         companyId,
         author,
         text,
@@ -279,7 +269,7 @@ export const addChatMessage = (companyId, author, text) => {
     });
 };
 export const listenToCompanyChat = (companyId, callback) => {
-    const q = query(chatCollection, where("companyId", "==", companyId), orderBy("createdAt", "asc"));
+    const q = query(collection(db, 'team_chat'), where("companyId", "==", companyId), orderBy("createdAt", "asc"));
     return onSnapshot(q, (snapshot) => {
         const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         callback(messages);
@@ -291,12 +281,11 @@ export const getCompanyDashboardData = async (companyId) => {
     const companySnap = await getCompany(companyId);
     const company = companySnap.exists() ? { id: companySnap.id, ...companySnap.data() } : null;
 
-    const tasksQuery = query(tasksCollection, where("companyId", "==", companyId), orderBy("updatedAt", "desc"));
+    const tasksQuery = query(collection(db, 'tasks'), where("companyId", "==", companyId), orderBy("updatedAt", "desc"));
     const tasksSnap = await getDocs(tasksQuery);
     const tasks = tasksSnap.docs.map(doc => doc.data());
 
-    // FIXED: This query now correctly uses the new `companyIds` array.
-    const membersQuery = query(usersCollection, where("companyIds", "array-contains", companyId));
+    const membersQuery = query(collection(db, 'users'), where("companyIds", "array-contains", companyId));
     const membersSnap = await getDocs(membersQuery);
     const members = membersSnap.docs.map(doc => doc.data());
 
@@ -317,7 +306,7 @@ export const uploadTaskAttachment = async (taskId, file) => {
         type: file.type,
         uploadedAt: serverTimestamp()
     };
-    const taskRef = doc(tasksCollection, taskId);
+    const taskRef = doc(collection(db, 'tasks'), taskId);
     await updateDoc(taskRef, {
         attachments: arrayUnion(attachmentData)
     });
@@ -328,7 +317,7 @@ export const deleteAttachment = async (taskId, attachment) => {
     const fileRef = storageRef(storage, attachment.path);
     await deleteObject(fileRef);
 
-    const taskRef = doc(tasksCollection, taskId);
+    const taskRef = doc(collection(db, 'tasks'), taskId);
     const taskSnap = await getDoc(taskRef);
     if(taskSnap.exists()){
         const existingAttachments = taskSnap.data().attachments || [];
