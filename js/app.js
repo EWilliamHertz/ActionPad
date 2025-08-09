@@ -134,16 +134,16 @@ function setupListeners() {
 
     appState.presenceListener = listenToCompanyPresence(appState.company.id, (users) => {
         appState.team = users;
-        // UImanager.renderTeamList(appState.team);
+        // UImanager.renderTeamList(appState.team); // This will be handled inside a proper UI component later
     });
 
     appState.chatListener = listenToCompanyChat(appState.company.id, (messages) => {
-        // UImanager.renderChatMessages(messages, appState.user.uid);
+        // UImanager.renderChatMessages(messages, appState.user.uid); // This will be handled inside a proper UI component later
     });
 
     appState.notificationsListener = listenToNotifications(appState.user.uid, (notifications) => {
         appState.notifications = notifications;
-        // UImanager.updateNotificationBell(notifications);
+        // UImanager.updateNotificationBell(notifications); // This will be handled inside a proper UI component later
     });
 }
 
@@ -167,7 +167,7 @@ function switchProject(projectId) {
 
     appState.tasksListener = listenToCompanyTasks(appState.company.id, projectId, (tasks) => {
         appState.tasks = tasks;
-        UImanager.renderListView(tasks); // Example: Render the list view
+        UImanager.renderListView(tasks);
     });
 }
 
@@ -195,14 +195,6 @@ function setupUI() {
         signOut();
     });
 
-    document.getElementById('view-switcher').addEventListener('click', (e) => {
-        if (e.target.matches('.view-btn')) {
-            appState.currentView = e.target.dataset.view;
-            // UImanager.switchView(appState.currentView);
-            // UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
-        }
-    });
-
     document.getElementById('project-list').addEventListener('click', (e) => {
         if (e.target.matches('.project-item')) {
             const projectId = e.target.dataset.projectId;
@@ -221,7 +213,7 @@ function setupUI() {
         const currentPath = window.location.href;
         const basePath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
         const inviteLink = `${basePath}register.html?ref=${appState.company.referralId}`;
-        // UImanager.openInviteModal(inviteLink);
+        UImanager.openModal(UImanager.DOM.inviteModal, { inviteLink });
     });
 
     document.getElementById('hamburger-menu').addEventListener('click', () => {
@@ -230,7 +222,7 @@ function setupUI() {
 
     document.getElementById('search-bar').addEventListener('input', (e) => {
         appState.searchTerm = e.target.value;
-        // UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
+        UImanager.renderListView(filterTasks(appState.tasks, appState.searchTerm));
     });
 
     document.getElementById('team-chat-form').addEventListener('submit', (e) => {
@@ -247,10 +239,6 @@ function setupUI() {
                 .catch(err => console.error("Error sending chat message:", err));
             input.value = '';
         }
-    });
-
-    document.getElementById('command-palette-input').addEventListener('input', (e) => {
-        // UImanager.renderCommandPaletteResults(e.target.value.toLowerCase(), appState);
     });
 
     document.getElementById('notification-bell').addEventListener('click', () => {
