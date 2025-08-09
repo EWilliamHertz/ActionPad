@@ -537,3 +537,267 @@ main { padding: 2rem; overflow-y: auto; }
     font-size: 1.2rem;
     color: var(--subtle-text-color);
 }
+
+/* --- Styles for My Tasks page --- */
+.my-tasks-list .company-task-group {
+    margin-bottom: 2rem;
+}
+.my-tasks-list h3 {
+    border-bottom: 2px solid var(--primary-color);
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+}
+.task-list-simple {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+.task-item-simple {
+    background: var(--surface-color);
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+.task-item-simple.done .task-name {
+    text-decoration: line-through;
+    color: var(--subtle-text-color);
+}
+.task-item-simple .task-project {
+    font-size: 0.9rem;
+    color: var(--subtle-text-color);
+    background: #f1f3f5;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+}
+.task-item-simple .task-due-date {
+    font-weight: 500;
+}
+.dashboard-main-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+.dashboard-action-btn {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 0.8rem 1.5rem;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 500;
+    transition: background-color 0.2s;
+}
+.dashboard-action-btn:hover {
+    background-color: #357ABD;
+}
+
+
+/* --- Styles for Enhanced Dashboard Cards --- */
+.company-card-progress {
+    margin: 1rem 0;
+}
+.progress-bar-container {
+    background-color: var(--border-color);
+    border-radius: 20px;
+    height: 8px;
+    overflow: hidden;
+}
+.progress-bar {
+    background-color: var(--primary-color);
+    height: 100%;
+    border-radius: 20px;
+    transition: width 0.5s ease-in-out;
+}
+.progress-text {
+    font-size: 0.8rem;
+    color: var(--subtle-text-color);
+    margin-top: 0.25rem;
+    display: block;
+}
+.company-card-members {
+    display: flex;
+    margin-bottom: 1.5rem;
+}
+.avatar-small {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 2px solid var(--surface-color);
+    margin-left: -10px;
+    object-fit: cover;
+}
+.avatar-small:first-child {
+    margin-left: 0;
+}
+
+
+/* --- Styles for Notifications --- */
+.notification-bell {
+    position: relative;
+    cursor: pointer;
+    font-size: 1.5rem;
+    color: var(--subtle-text-color);
+}
+.notification-count {
+    position: absolute;
+    top: -5px;
+    right: -10px;
+    background-color: var(--priority-high);
+    color: white;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+.notification-dropdown {
+    position: absolute;
+    top: 130%;
+    right: 0;
+    background: var(--surface-color);
+    border-radius: 8px;
+    box-shadow: 0 5px 25px rgba(0,0,0,0.15);
+    width: 350px;
+    max-height: 400px;
+    overflow-y: auto;
+    z-index: 1200;
+}
+.notification-item {
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.notification-item:last-child {
+    border-bottom: none;
+}
+.notification-item:not(.read) {
+    background-color: #f8f9fa;
+}
+.notification-item p {
+    margin: 0 0 0.25rem 0;
+}
+.notification-item .timestamp {
+    font-size: 0.8rem;
+    color: var(--subtle-text-color);
+}
+
+
+/* --- Styles for File Attachments --- */
+#add-attachment-btn {
+    background: none;
+    border: 1px solid var(--border-color);
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+#add-attachment-btn:hover {
+    background-color: var(--background-color);
+}
+.attachment-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border-radius: 4px;
+}
+.attachment-item:hover {
+    background-color: #f8f9fa;
+}
+.attachment-item a {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+}
+.attachment-item .attachment-size {
+    color: var(--subtle-text-color);
+    font-size: 0.8rem;
+}
+.delete-attachment-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--subtle-text-color);
+    font-size: 1.2rem;
+}
+
+/* --- Styles for AI Button --- */
+#ai-subtask-btn {
+    background: linear-gradient(45deg, #4A90E2, #8A2BE2);
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 1rem;
+    font-weight: 500;
+    transition: opacity 0.2s;
+}
+#ai-subtask-btn:hover {
+    opacity: 0.9;
+}
+
+
+/* --- Styles for Command Palette --- */
+#command-palette-content {
+    padding: 0;
+    max-height: 500px;
+    display: flex;
+    flex-direction: column;
+}
+#command-palette-input {
+    width: 100%;
+    padding: 1rem;
+    font-size: 1.2rem;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    box-sizing: border-box;
+}
+#command-palette-input:focus {
+    outline: none;
+}
+#command-palette-results {
+    overflow-y: auto;
+    padding: 0.5rem;
+}
+.command-palette-category {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--subtle-text-color);
+    text-transform: uppercase;
+    padding: 0.75rem 1rem;
+}
+.command-palette-item {
+    padding: 0.75rem 1.5rem;
+    cursor: pointer;
+    border-radius: 6px;
+}
+.command-palette-item:hover {
+    background-color: var(--background-color);
+}
+.command-palette-placeholder {
+    text-align: center;
+    color: var(--subtle-text-color);
+    padding: 2rem;
+}
+
+/* --- Styles for Drag and Drop --- */
+.task-item.dragging {
+    opacity: 0.5;
+    background: #e9ecef;
+}
+.kanban-column.drag-over .kanban-tasks {
+    background-color: rgba(74, 144, 226, 0.1);
+    border: 2px dashed var(--primary-color);
+    min-height: 100px;
+}
