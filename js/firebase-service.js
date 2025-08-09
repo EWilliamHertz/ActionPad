@@ -8,9 +8,9 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 import {
     collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs,
-    query, where, serverTimestamp, setDoc, onSnapshot, orderBy, arrayUnion
+    query, where, serverTimestamp, setDoc, onSnapshot, orderBy, arrayUnion, writeBatch
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
-import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js";
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js";
 import { showToast } from './toast.js';
 
 const usersCollection = collection(db, 'users');
@@ -19,7 +19,7 @@ const tasksCollection = collection(db, 'tasks');
 const projectsCollection = collection(db, 'projects');
 const chatCollection = collection(db, 'team_chat');
 
-const GEMINI_API_KEY = "AIzaSyC9VG3fpf0VAsKfWgJE60lGWcmH6qObCN0";
+const GEMINI_API_KEY = "AIzaSyC9VG3fpf0VAsKfWgJE60lGWcmH6qObCN0"; // Replace with your actual key
 
 // --- Authentication & User Management ---
 export const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
@@ -27,8 +27,6 @@ export const sendVerificationEmail = (user) => firebaseSendEmailVerification(use
 export const sendPasswordReset = (email) => firebaseSendPasswordResetEmail(auth, email);
 
 export const signOut = () => {
-    // This function might need adjustment based on multi-company presence.
-    // For now, it signs out globally.
     return firebaseSignOut(auth);
 };
 
@@ -39,7 +37,6 @@ export const registerUser = async (userData) => {
     await sendVerificationEmail(user);
 
     let companyId;
-    let finalCompanyName = companyName;
 
     if (referralId) {
         const q = query(companiesCollection, where("referralId", "==", Number(referralId)));
@@ -59,7 +56,6 @@ export const registerUser = async (userData) => {
         companyId = newCompanyRef.id;
     }
     
-    // NEW: User profile now stores an array of companies
     await setDoc(doc(usersCollection, user.uid), {
         fullName, 
         nickname, 
@@ -70,12 +66,10 @@ export const registerUser = async (userData) => {
         }]
     });
 
-    // Store the first companyId for redirection after registration
     localStorage.setItem('selectedCompanyId', companyId);
     return user;
 };
 
-// NEW: Function to join an existing company
 export const joinCompanyWithReferralId = async (user, referralId) => {
     const q = query(companiesCollection, where("referralId", "==", Number(referralId)));
     const querySnapshot = await getDocs(q);
@@ -88,8 +82,6 @@ export const joinCompanyWithReferralId = async (user, referralId) => {
     const companyId = companyDoc.id;
     const userRef = doc(usersCollection, user.uid);
 
-    // Add the new company to the user's list of companies
-    // For simplicity, the role is set to 'Member'. This could be expanded upon.
     await updateDoc(userRef, {
         companies: arrayUnion({
             companyId: companyId,
@@ -98,7 +90,6 @@ export const joinCompanyWithReferralId = async (user, referralId) => {
     });
 };
 
-// NEW: Function to create a new company for an existing user
 export const createNewCompany = async (user, companyName, userRole) => {
     const newCompanyRef = await addDoc(companiesCollection, { 
         name: companyName, 
@@ -134,20 +125,18 @@ export const updateUserPassword = async (currentPassword, newPassword) => {
     await updatePassword(user, newPassword);
 };
 
-// --- Presence Management (Firestore-only) ---
+// --- Presence Management ---
 export const manageUserPresence = async (user, companyId) => {
-    // Presence is now company-specific
     const userStatusFirestoreRef = doc(db, 'users', user.uid);
     await updateDoc(userStatusFirestoreRef, { 
         online: true, 
         last_changed: serverTimestamp(),
-        activeCompany: companyId // Track which company the user is active in
+        activeCompany: companyId 
     });
 };
 
 export const listenToCompanyPresence = (companyId, callback) => {
-    // This query needs to change to look inside the companies array
-    const q = query(usersCollection, where("companies", "array-contains", { companyId: companyId }));
+    const q = query(usersCollection, where("activeCompany", "==", companyId));
     return onSnapshot(q, (snapshot) => {
         const users = snapshot.docs.map(doc => {
             const data = doc.data();
@@ -155,7 +144,7 @@ export const listenToCompanyPresence = (companyId, callback) => {
             return {
                 id: doc.id,
                 ...data,
-                companyRole: companyInfo?.role // Extract role for this company
+                companyRole: companyInfo?.role
             };
         });
         callback(users);
@@ -191,17 +180,16 @@ export const addTask = (taskData, companyId, author) => {
         subtasks: [], 
         attachments: [], 
         language,
+        order: Date.now(), // For drag-and-drop reordering
         createdAt: serverTimestamp(), 
         updatedAt: serverTimestamp() 
     });
 }
 
 export const getTask = (taskId) => getDoc(doc(tasksCollection, taskId));
-
 export const updateTask = (taskId, updatedData) => {
     return updateDoc(doc(tasksCollection, taskId), { ...updatedData, updatedAt: serverTimestamp() });
 };
-
 export const deleteTask = (taskId) => deleteDoc(doc(tasksCollection, taskId));
 
 export const listenToCompanyTasks = (companyId, projectId, callback) => {
@@ -209,13 +197,13 @@ export const listenToCompanyTasks = (companyId, projectId, callback) => {
     if (projectId === 'all') {
         q = query(tasksCollection, 
             where("companyId", "==", companyId), 
-            orderBy("createdAt", "desc")
+            orderBy("order", "asc") // Changed to 'order' for drag-and-drop
         );
     } else {
         q = query(tasksCollection, 
             where("companyId", "==", companyId), 
             where("projectId", "==", projectId), 
-            orderBy("createdAt", "desc")
+            orderBy("order", "asc") // Changed to 'order' for drag-and-drop
         );
     }
     
@@ -228,15 +216,47 @@ export const listenToCompanyTasks = (companyId, projectId, callback) => {
     });
 };
 
+// NEW: Get all tasks assigned to a user across all companies
+export const getTasksAssignedToUser = async (userId) => {
+    const q = query(tasksCollection, where("assignedTo", "array-contains", userId));
+    const querySnapshot = await getDocs(q);
+    
+    const tasks = [];
+    // We need to fetch company and project names for context
+    for (const taskDoc of querySnapshot.docs) {
+        const taskData = { id: taskDoc.id, ...taskDoc.data() };
+
+        if(taskData.companyId) {
+            const companySnap = await getCompany(taskData.companyId);
+            taskData.companyName = companySnap.exists() ? companySnap.data().name : 'Unknown Company';
+        }
+        if(taskData.projectId) {
+            const projectSnap = await getDoc(doc(projectsCollection, taskData.projectId));
+            taskData.projectName = projectSnap.exists() ? projectSnap.data().name : 'No Project';
+        }
+        tasks.push(taskData);
+    }
+    return tasks;
+};
+
+
 // --- Comments & Activity ---
-export const addComment = (taskId, commentData) => {
+export const addComment = (taskId, commentData, mentions) => {
      const language = localStorage.getItem('actionPadLanguage') || 'en';
-    return addDoc(collection(db, 'tasks', taskId, 'comments'), { 
+     const commentRef =  addDoc(collection(db, 'tasks', taskId, 'comments'), { 
         ...commentData, 
         type: 'comment',
         language,
         createdAt: serverTimestamp() 
     });
+    // Create notifications for mentioned users
+    mentions.forEach(userId => {
+        createNotification(userId, {
+            text: `${commentData.author.nickname} mentioned you in a comment on task.`,
+            taskId: taskId
+        });
+    });
+    return commentRef;
 }
 export const logActivity = (taskId, activityData) => addDoc(collection(db, 'tasks', taskId, 'comments'), { ...activityData, type: 'activity', createdAt: serverTimestamp() });
 export const listenToTaskComments = (taskId, callback) => {
@@ -254,7 +274,6 @@ export const addChatMessage = (companyId, author, text) => {
         createdAt: serverTimestamp()
     });
 };
-
 export const listenToCompanyChat = (companyId, callback) => {
     const q = query(chatCollection, where("companyId", "==", companyId), orderBy("createdAt", "asc"));
     return onSnapshot(q, (snapshot) => {
@@ -263,18 +282,16 @@ export const listenToCompanyChat = (companyId, callback) => {
     });
 };
 
-// --- NEW: Dashboard Data Fetching ---
+// --- Dashboard Data Fetching ---
 export const getCompanyDashboardData = async (companyId) => {
-    // 1. Get Company Info
     const companySnap = await getCompany(companyId);
     const company = companySnap.exists() ? { id: companySnap.id, ...companySnap.data() } : null;
 
-    // 2. Get all tasks for the company
-    const tasksQuery = query(tasksCollection, where("companyId", "==", companyId));
+    // Get all tasks for the company, ordered by latest update
+    const tasksQuery = query(tasksCollection, where("companyId", "==", companyId), orderBy("updatedAt", "desc"));
     const tasksSnap = await getDocs(tasksQuery);
     const tasks = tasksSnap.docs.map(doc => doc.data());
 
-    // 3. Get all members of the company
     const membersQuery = query(usersCollection, where("companies", "array-contains", { companyId: companyId }));
     const membersSnap = await getDocs(membersQuery);
     const members = membersSnap.docs.map(doc => doc.data());
@@ -282,11 +299,76 @@ export const getCompanyDashboardData = async (companyId) => {
     return { company, tasks, members };
 };
 
+// --- File Attachments ---
+export const uploadTaskAttachment = async (taskId, file) => {
+    const filePath = `task_attachments/${taskId}/${Date.now()}_${file.name}`;
+    const fileRef = storageRef(storage, filePath);
+    await uploadBytes(fileRef, file);
+    const downloadURL = await getDownloadURL(fileRef);
+    const attachmentData = {
+        name: file.name,
+        url: downloadURL,
+        path: filePath, // Store path for deletion
+        size: file.size,
+        type: file.type,
+        uploadedAt: serverTimestamp()
+    };
+    // Add this attachment to the task document
+    const taskRef = doc(tasksCollection, taskId);
+    await updateDoc(taskRef, {
+        attachments: arrayUnion(attachmentData)
+    });
+    return attachmentData;
+};
 
-// --- Translation Service ---
+export const deleteAttachment = async (taskId, attachment) => {
+    // Delete file from storage
+    const fileRef = storageRef(storage, attachment.path);
+    await deleteObject(fileRef);
+
+    // Remove from task document
+    const taskRef = doc(tasksCollection, taskId);
+    const taskSnap = await getDoc(taskRef);
+    if(taskSnap.exists()){
+        const existingAttachments = taskSnap.data().attachments || [];
+        const updatedAttachments = existingAttachments.filter(att => att.url !== attachment.url);
+        await updateDoc(taskRef, { attachments: updatedAttachments });
+    }
+};
+
+// --- Notifications ---
+export const createNotification = (userId, notificationData) => {
+    // Notifications are a subcollection under each user
+    const userNotificationsCollection = collection(db, 'users', userId, 'notifications');
+    return addDoc(userNotificationsCollection, {
+        ...notificationData,
+        isRead: false,
+        createdAt: serverTimestamp()
+    });
+};
+
+export const listenToNotifications = (userId, callback) => {
+    const q = query(collection(db, 'users', userId, 'notifications'), orderBy("createdAt", "desc"));
+    return onSnapshot(q, (snapshot) => {
+        const notifications = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(notifications);
+    });
+};
+
+export const markNotificationsAsRead = (userId, notifications) => {
+    const batch = writeBatch(db);
+    notifications.forEach(notif => {
+        if (!notif.isRead) {
+            const notifRef = doc(db, 'users', userId, 'notifications', notif.id);
+            batch.update(notifRef, { isRead: true });
+        }
+    });
+    return batch.commit();
+};
+
+// --- AI & Translation Services ---
 export const translateText = async (text, targetLanguage) => {
     if (!text || !targetLanguage) return text;
-
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
     const prompt = `Translate this text to ${targetLanguage}: "${text}"`;
 
@@ -296,22 +378,43 @@ export const translateText = async (text, targetLanguage) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
         });
-
-        if (!response.ok) {
-            const errorBody = await response.json();
-            console.error("Translation API Error:", response.status, errorBody);
-            return text;
-        }
-
+        if (!response.ok) throw new Error(`API error: ${response.status}`);
         const data = await response.json();
-        if (data.candidates && data.candidates.length > 0 && data.candidates[0].content?.parts[0]?.text) {
-            return data.candidates[0].content.parts[0].text.trim();
-        } else {
-            console.error("Invalid translation response structure:", data);
-            return text;
-        }
+        return data.candidates[0].content.parts[0].text.trim();
     } catch (error) {
         console.error('Failed to fetch translation:', error);
         return text;
+    }
+};
+
+// NEW: AI Subtask Generation
+export const generateSubtasksAI = async (taskName, taskDescription) => {
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+    const prompt = `You are a project management assistant. Break down the following task into a short, actionable list of subtasks.
+    Task Name: "${taskName}"
+    Description: "${taskDescription || 'No description'}"
+    Respond ONLY with a JavaScript-style array of strings, like this: ["First subtask", "Second subtask", "Third subtask"]`;
+
+    try {
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+        });
+        if (!response.ok) {
+            const errorBody = await response.json();
+            throw new Error(`AI API error: ${response.status} - ${errorBody.error.message}`);
+        }
+        const data = await response.json();
+        const rawText = data.candidates[0].content.parts[0].text;
+        
+        // Clean up the response to be valid JSON
+        const jsonText = rawText.replace(/`/g, '').replace('javascript', '').trim();
+        const subtasks = JSON.parse(jsonText);
+        return subtasks.map(text => ({ text, isCompleted: false }));
+
+    } catch (error) {
+        console.error('Failed to generate subtasks with AI:', error);
+        throw error; // Re-throw to be caught by the UI
     }
 };
