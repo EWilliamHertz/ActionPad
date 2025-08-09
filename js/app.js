@@ -42,52 +42,77 @@ const getUserProfileWithRetry = async (userId, retries = 3, delay = 1000) => {
     throw new Error("Your user profile could not be found. Please contact support.");
 };
 
+// FIXED: Re-architected the entire initialization flow to be sequential and prevent race conditions.
 async function initialize() {
     try {
+        console.log("Initialization started...");
+
+        // 1. Get User Profile
         const profileSnap = await getUserProfileWithRetry(appState.user.uid);
         appState.profile = { uid: appState.user.uid, ...profileSnap.data() };
-        
+        console.log("Step 1: Profile loaded", appState.profile);
+
+        // 2. Get Company Info using the profile's companyId
         const companySnap = await getCompany(appState.profile.companyId);
         if (!companySnap.exists()) throw new Error("Company data not found.");
         appState.company = {id: companySnap.id, ...companySnap.data()};
-        
+        console.log("Step 2: Company loaded", appState.company);
+
+        // 3. Initialize controllers with the now-complete state
         taskController.initTaskController(appState);
         uiManager.initUIManager(appState);
-        setupUI();
-        
-        listenToCompanyProjects(appState.profile.companyId, (projects) => {
-            appState.projects = projects;
-            uiManager.renderProjectList(appState.projects, appState.currentProjectId);
-            if (appState.currentProjectId !== 'all') {
-                const updatedProject = projects.find(p => p.id === appState.currentProjectId);
-                if (updatedProject) {
-                    uiManager.updateProjectHeader(updatedProject);
-                }
-            }
-        });
-        
-        switchProject('all');
-        
-        listenToCompanyPresence(appState.profile.companyId, (users) => {
-            appState.team = users;
-            uiManager.renderTeamList(appState.team);
-        });
 
-        // NEW: Listen to company chat
-        if (appState.chatListener) appState.chatListener(); // Unsubscribe from previous listener
-        appState.chatListener = listenToCompanyChat(appState.profile.companyId, (messages) => {
-            uiManager.renderChatMessages(messages, appState.user.uid);
-        });
-        
+        // 4. Set up the main UI elements
+        setupUI();
+        console.log("Step 3: Main UI setup complete.");
+
+        // 5. Set up all real-time listeners
+        setupListeners();
+        console.log("Step 4: All data listeners attached.");
+
+        // 6. Set user presence to online
         manageUserPresence(appState.user);
+        
+        // Finally, show the application
         document.getElementById('app-container').classList.remove('hidden');
+        console.log("Initialization complete. App is ready.");
         
     } catch (error) {
-        console.error("Initialization Failed:", error);
+        console.error("CRITICAL INITIALIZATION FAILURE:", error);
         showToast(error.message || 'Could not initialize the application.', 'error');
         signOut(); 
     }
 }
+
+function setupListeners() {
+    // Listen to projects
+    listenToCompanyProjects(appState.profile.companyId, (projects) => {
+        appState.projects = projects;
+        uiManager.renderProjectList(appState.projects, appState.currentProjectId);
+        if (appState.currentProjectId !== 'all') {
+            const updatedProject = projects.find(p => p.id === appState.currentProjectId);
+            if (updatedProject) {
+                uiManager.updateProjectHeader(updatedProject);
+            }
+        }
+    });
+    
+    // Set up the initial task listener
+    switchProject('all');
+    
+    // Listen to team member presence
+    listenToCompanyPresence(appState.profile.companyId, (users) => {
+        appState.team = users;
+        uiManager.renderTeamList(appState.team);
+    });
+
+    // Listen to company chat
+    if (appState.chatListener) appState.chatListener();
+    appState.chatListener = listenToCompanyChat(appState.profile.companyId, (messages) => {
+        uiManager.renderChatMessages(messages, appState.user.uid);
+    });
+}
+
 
 function switchProject(projectId) {
     appState.currentProjectId = projectId;
@@ -171,7 +196,6 @@ function setupUI() {
         uiManager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
     });
 
-    // NEW: Team Chat Form
     document.getElementById('team-chat-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const input = document.getElementById('team-chat-input');
