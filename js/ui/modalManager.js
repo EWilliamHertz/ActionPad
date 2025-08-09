@@ -66,30 +66,40 @@ export const openModal = (modalElement, task = null) => {
             renderComments(comments);
         });
 
-        // --- FIX: Attach event listener here, when the modal is guaranteed to be ready ---
+        // --- FIX: Attach event listener here, with a safety check ---
         const editTaskForm = document.getElementById('edit-task-form');
         const saveButton = editTaskForm.querySelector('button[type="submit"]');
 
-        // To prevent multiple listeners from being added, we replace the button with a clone of itself.
-        // This is a clean way to remove all old event listeners before adding a new one.
-        const newSaveButton = saveButton.cloneNode(true);
-        saveButton.parentNode.replaceChild(newSaveButton, saveButton);
+        // SAFETY CHECK: Only proceed if the button is actually found.
+        if (saveButton) {
+            const newSaveButton = saveButton.cloneNode(true);
+            saveButton.parentNode.replaceChild(newSaveButton, saveButton);
 
-        newSaveButton.addEventListener('click', async (e) => {
-            e.preventDefault();
-            newSaveButton.disabled = true;
-            newSaveButton.textContent = 'Saving...';
-            try {
-                await taskController.handleEditTask();
-                closeModal(document.getElementById('task-modal'));
-            } catch (err) {
-                console.error("UI layer caught task update error:", err);
-            } finally {
-                newSaveButton.disabled = false;
-                newSaveButton.textContent = 'Save Changes';
+            newSaveButton.addEventListener('click', async (e) => {
+                e.preventDefault();
+                newSaveButton.disabled = true;
+                newSaveButton.textContent = 'Saving...';
+                try {
+                    await taskController.handleEditTask();
+                    closeModal(document.getElementById('task-modal'));
+                } catch (err) {
+                    console.error("UI layer caught task update error:", err);
+                } finally {
+                    newSaveButton.disabled = false;
+                    newSaveButton.textContent = 'Save Changes';
+                }
+            });
+        } else {
+            // This is the new, more detailed error log.
+            console.error("CRITICAL ERROR: Could not find the 'Save Changes' button (button[type='submit']) inside the task form.");
+            if(editTaskForm) {
+                console.log("The content of the form at the time of the error was:", editTaskForm.innerHTML);
+            } else {
+                console.error("The form with ID 'edit-task-form' was not found at all.");
             }
-        });
+        }
     }
+    // This line will now be reached, allowing the modal to open.
     modalElement.classList.remove('hidden');
 };
 
