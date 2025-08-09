@@ -17,7 +17,7 @@ export const setupProjectForm = (state) => {
         if (projectName && state.profile) {
             const projectData = {
                 name: projectName,
-                companyId: state.profile.companyId,
+                companyId: state.company.id,
             };
             firebaseService.addProject(projectData)
                 .then(() => {
@@ -49,7 +49,7 @@ const handleAddTask = (text) => {
     taskData.projectId = appState.currentProjectId === 'all' ? null : appState.currentProjectId;
 
     const author = { uid: appState.user.uid, nickname: appState.profile.nickname };
-    firebaseService.addTask(taskData, appState.profile.companyId, author)
+    firebaseService.addTask(taskData, appState.company.id, author)
         .then((docRef) => {
             const activityText = `${author.nickname} created this task.`;
             firebaseService.logActivity(docRef.id, { text: activityText, author });
@@ -61,36 +61,40 @@ const handleAddTask = (text) => {
         });
 };
 
-// THE DEFINITIVE FIX for editing tasks.
 export const handleEditTask = async () => {
     const taskId = document.getElementById('edit-task-id').value;
     
-    // Step 1: Fetch the current, complete task data from Firestore.
-    // This is crucial to ensure we have all existing fields, especially `companyId`.
     const taskSnap = await firebaseService.getTask(taskId);
     if (!taskSnap.exists()) {
-        throw new Error("Task not found. It may have been deleted by another user.");
+        throw new Error("Task not found. It may have been deleted.");
     }
     const existingTaskData = taskSnap.data();
+    const oldAssignees = existingTaskData.assignedTo || [];
 
-    // Step 2: Get the new values from the form fields.
     const selectedOptions = document.querySelectorAll('#edit-task-assignees option:checked');
-    const assignees = Array.from(selectedOptions).map(el => el.value);
+    const newAssignees = Array.from(selectedOptions).map(el => el.value);
 
-    // Step 3: Create a payload that merges the existing data with the new data.
-    // This ensures that when we send the update, all required fields for security rules are present.
     const updatedData = {
-        ...existingTaskData, // Start with all existing data
+        ...existingTaskData,
         name: document.getElementById('edit-task-name').value,
         description: document.getElementById('edit-task-description').value,
         dueDate: document.getElementById('edit-task-due-date').value,
         priority: document.getElementById('edit-task-priority').value,
         status: document.getElementById('edit-task-status').value,
-        assignedTo: assignees,
+        assignedTo: newAssignees,
         projectId: document.getElementById('edit-task-project').value
     };
 
-    // Step 4: Perform the update with the complete and correct data payload.
+    // Create notifications for newly assigned users
+    newAssignees.forEach(userId => {
+        if (!oldAssignees.includes(userId)) {
+            firebaseService.createNotification(userId, {
+                text: `${appState.profile.nickname} assigned you a new task: "${updatedData.name}"`,
+                taskId: taskId
+            });
+        }
+    });
+
     return firebaseService.updateTask(taskId, updatedData)
         .then(() => {
             showToast('Task updated!', 'success');
@@ -98,7 +102,7 @@ export const handleEditTask = async () => {
         .catch(err => {
             console.error("Controller caught task update error:", err);
             showToast(`Update failed: ${err.message}`, 'error');
-            throw err; // Re-throw the error for the UI layer to handle.
+            throw err; 
         });
 };
 
@@ -108,8 +112,6 @@ export const toggleTaskStatus = (taskId, isDone) => {
 };
 
 export const updateTaskStatus = (taskId, newStatus) => {
-    // For a simple status toggle, we don't need to fetch the whole task.
-    // The security rule for updates will still pass based on the user's company.
     firebaseService.updateTask(taskId, { status: newStatus })
         .catch(err => {
             console.error("Error updating task status:", err);
@@ -151,6 +153,18 @@ export const deleteSubtask = (taskId, subtaskIndex) => {
 };
 
 export const addComment = (taskId, text) => {
+    // Basic @mention parsing
+    const mentions = new Set();
+    const mentionRegex = /@(\w+)/g;
+    let match;
+    while ((match = mentionRegex.exec(text)) !== null) {
+        const nickname = match[1];
+        const user = appState.team.find(u => u.nickname.toLowerCase() === nickname.toLowerCase());
+        if(user) {
+            mentions.add(user.id);
+        }
+    }
+
     const commentData = {
         text,
         author: {
@@ -159,8 +173,47 @@ export const addComment = (taskId, text) => {
             avatarURL: appState.profile.avatarURL || null
         }
     };
-    firebaseService.addComment(taskId, commentData);
+    firebaseService.addComment(taskId, commentData, Array.from(mentions));
 };
+
+// NEW: Handle file attachment
+export const handleAttachmentUpload = async (e) => {
+    const file = e.target.files[0];
+    const taskId = document.getElementById('edit-task-id').value;
+    if (!file || !taskId) return;
+
+    showToast('Uploading attachment...', 'success');
+    try {
+        await firebaseService.uploadTaskAttachment(taskId, file);
+        showToast('Attachment added!', 'success');
+    } catch (error) {
+        console.error("Attachment upload failed:", error);
+        showToast('Attachment upload failed.', 'error');
+    }
+    // Clear the input value to allow uploading the same file again
+    e.target.value = ''; 
+};
+
+// NEW: Generate subtasks with AI
+export const generateSubtasksWithAI = async () => {
+    const taskId = document.getElementById('edit-task-id').value;
+    const taskName = document.getElementById('edit-task-name').value;
+    const taskDescription = document.getElementById('edit-task-description').value;
+    
+    showToast('🤖 Generating subtasks with AI...', 'success');
+    try {
+        const aiSubtasks = await firebaseService.generateSubtasksAI(taskName, taskDescription);
+        const task = appState.tasks.find(t => t.id === taskId);
+        const existingSubtasks = task.subtasks || [];
+        const updatedSubtasks = [...existingSubtasks, ...aiSubtasks];
+        await firebaseService.updateTask(taskId, { subtasks: updatedSubtasks });
+        showToast('AI subtasks added!', 'success');
+    } catch (error) {
+        console.error("AI Subtask generation failed:", error);
+        showToast(`AI failed: ${error.message}`, 'error');
+    }
+};
+
 
 const parseTaskInput = (text) => {
     let taskName = text;
