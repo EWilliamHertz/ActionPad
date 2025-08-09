@@ -237,7 +237,6 @@ export const setupModals = () => {
 
     const editTaskForm = document.getElementById('edit-task-form');
     if (editTaskForm) {
-        // FIXED: Re-architected the submit handler to be robust.
         editTaskForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const saveButton = editTaskForm.querySelector('button[type="submit"]');
@@ -245,16 +244,13 @@ export const setupModals = () => {
             saveButton.textContent = 'Saving...';
 
             try {
-                // Await the promise from the controller.
                 await taskController.handleEditTask();
-                showToast('Task updated successfully!', 'success');
+                // The toast is now handled in the controller on success
                 closeModal(taskModal);
             } catch (err) {
-                // If the promise rejects, show an error.
-                console.error("Update task failed:", err);
-                showToast(`Error: ${err.message}`, 'error');
+                // The error toast is now handled in the controller on failure
+                console.error("UI layer caught task update error:", err);
             } finally {
-                // Always re-enable the button.
                 saveButton.disabled = false;
                 saveButton.textContent = 'Save Changes';
             }
@@ -444,7 +440,7 @@ async function renderTranslatedText(element, text, originalLanguage) {
             element.textContent = translatedText;
             element.title = `Original: ${text}`;
         } catch (e) {
-            element.textContent = text; // Show original on error
+            element.textContent = text; 
         }
     } else {
         element.textContent = text;
