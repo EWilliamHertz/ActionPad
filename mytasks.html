@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Tasks - ActionPad</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="toast-container"></div>
+    <div class="dashboard-page-container">
+        <header class="main-header">
+            <div class="header-left">
+                <h1>My Tasks</h1>
+            </div>
+            <div class="header-controls">
+                <a href="dashboard.html" class="back-link" style="color: white; text-decoration: none; background-color: var(--primary-color); padding: 0.6rem 1.2rem; border-radius: 6px; font-weight: 500;">Back to Dashboard</a>
+                <button id="logout-button">Logout</button>
+            </div>
+        </header>
+
+        <main class="dashboard-main">
+            <h2>All Tasks Assigned to You</h2>
+            <div id="my-tasks-container" class="my-tasks-list">
+                <div class="loader">Loading your tasks...</div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module" src="js/mytasks.js"></script>
+</body>
+</html>
