@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Company Settings - ActionPad</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="toast-container"></div>
+    <div class="settings-page-container">
+        <header class="settings-header">
+            <h1 id="company-name-header">Company Settings</h1>
+            <a href="dashboard.html" class="back-link">&larr; Back to Dashboard</a>
+        </header>
+
+        <main class="settings-main">
+            <div class="settings-card">
+                <h2>Manage Team Members</h2>
+                <p>Set roles for each member of your team. Admins can manage settings and user roles, Members can create and edit tasks, and Viewers can only see tasks.</p>
+                <div id="members-list-container">
+                    <div class="loader">Loading members...</div>
+                </div>
+                <div class="settings-actions">
+                    <button id="save-roles-button" class="btn-primary">Save Changes</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module" src="js/company-settings.js"></script>
+</body>
+</html>
