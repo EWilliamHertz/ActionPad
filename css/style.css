@@ -801,3 +801,103 @@ main { padding: 2rem; overflow-y: auto; }
     border: 2px dashed var(--primary-color);
     min-height: 100px;
 }
+
+/* --- Styles for Settings Page Enhancements --- */
+.settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem 2rem;
+    background-color: var(--surface-color);
+    border-bottom: 1px solid var(--border-color);
+}
+.settings-header h1 {
+    margin: 0;
+}
+.back-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 500;
+}
+.settings-page-container {
+    background-color: var(--background-color);
+    min-height: 100vh;
+}
+.settings-main {
+    padding: 2rem;
+    max-width: 800px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+.settings-card {
+    background: var(--surface-color);
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+}
+.settings-card h2 {
+    margin-top: 0;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 1rem;
+    margin-bottom: 1.5rem;
+}
+.settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+.settings-form button[type="submit"] {
+    align-self: flex-start;
+    padding: 0.8rem 1.5rem;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+}
+.avatar-upload-container {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+.avatar-upload-container img {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    object-fit: cover;
+    background-color: var(--background-color);
+}
+.avatar-upload-container button {
+    background: none;
+    border: 1px solid var(--border-color);
+    padding: 0.6rem 1.2rem;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.form-section {
+    border-top: 1px solid var(--border-color);
+    padding-top: 1.5rem;
+}
+.form-section h4 {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    color: var(--subtle-text-color);
+}
+.header-btn {
+    background-color: var(--surface-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    padding: 0.6rem 1.2rem;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+}
+.header-btn:hover {
+    background-color: #f1f3f5;
+}
