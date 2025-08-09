@@ -99,6 +99,12 @@ function createCompanyCard(data, membership) {
         return `<img src="${avatarSrc}" alt="${member.nickname}" class="avatar-small">`;
     }).join('');
 
+    const settingsButtonHtml = membership.role === 'Admin' 
+        ? `<a href="company-settings.html" class="settings-btn" title="Company Settings">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </a>`
+        : '';
+
     card.innerHTML = `
         <div class="company-card-header">
             <h3>${company.name}</h3>
@@ -124,7 +130,10 @@ function createCompanyCard(data, membership) {
             ${memberAvatars}
         </div>
         <div class="company-card-footer">
-            <button class="switch-company-btn">Go to Company</button>
+             <div class="company-card-actions">
+                <button class="switch-company-btn">Go to Company</button>
+                ${settingsButtonHtml}
+            </div>
         </div>
     `;
 
@@ -132,6 +141,15 @@ function createCompanyCard(data, membership) {
         localStorage.setItem('selectedCompanyId', membership.companyId);
         window.location.href = 'index.html';
     });
+
+    const settingsLink = card.querySelector('.settings-btn');
+    if (settingsLink) {
+        settingsLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            localStorage.setItem('selectedCompanyId', membership.companyId);
+            window.location.href = 'company-settings.html';
+        });
+    }
 
     return card;
 }
@@ -230,9 +248,8 @@ document.querySelectorAll('.modal-close').forEach(btn => {
 document.getElementById('join-company-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const referralId = document.getElementById('join-referral-id').value;
-    const userRole = document.getElementById('join-company-role').value; 
     try {
-        await joinCompanyWithReferralId(currentUser, referralId, userRole);
+        await joinCompanyWithReferralId(currentUser, referralId);
         showToast('Successfully joined company!', 'success');
         location.reload(); 
     } catch (error) {
