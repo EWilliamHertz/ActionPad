@@ -3,15 +3,15 @@ import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.1.0/fi
 import { 
     getUserProfile, 
     updateUserProfile, 
-    uploadAvatar, 
-    updateUserPassword,
-    getCompany // NEW: Import getCompany to fetch company names
-} from './firebase-service.js';
+    uploadAvatar,
+} from './services/user.js';
+import { updateUserPassword } from './services/auth.js';
+import { getCompany } from './services/company.js';
 import { showToast } from './toast.js';
 
 let currentUser = null;
-let userProfile = null; // To store the full profile from Firestore
-let companyDetails = []; // To store fetched company names and roles
+let userProfile = null;
+let companyDetails = [];
 
 // Get references to DOM elements
 const profileForm = document.getElementById('profile-info-form');
@@ -33,10 +33,6 @@ onAuthStateChanged(auth, user => {
     }
 });
 
-/**
- * Fetches the current user's profile and all associated company data,
- * then populates the form fields and the new company dropdown.
- */
 async function loadProfileData() {
     if (!currentUser) return;
     try {
@@ -44,13 +40,11 @@ async function loadProfileData() {
         if (profileSnap.exists()) {
             userProfile = profileSnap.data();
             
-            // Populate universal fields
             nicknameInput.value = userProfile.nickname || '';
             if (userProfile.avatarURL) {
                 avatarPreview.src = userProfile.avatarURL;
             }
 
-            // Fetch details for each company the user is a member of
             if (userProfile.companies && userProfile.companies.length > 0) {
                 const companyPromises = userProfile.companies.map(async (membership) => {
                     const companySnap = await getCompany(membership.companyId);
@@ -62,10 +56,8 @@ async function loadProfileData() {
                 });
                 companyDetails = await Promise.all(companyPromises);
 
-                // Populate the dropdown
                 populateCompanyDropdown();
             } else {
-                // Handle case where user has no companies
                 companySelect.innerHTML = '<option>No companies found</option>';
                 roleInput.value = 'N/A';
                 roleInput.disabled = true;
@@ -87,12 +79,10 @@ function populateCompanyDropdown() {
         companySelect.appendChild(option);
     });
 
-    // Set the initial role based on the first company in the list
     if (companyDetails.length > 0) {
         roleInput.value = companyDetails[0].role;
     }
 
-    // Add event listener to update role when selection changes
     companySelect.addEventListener('change', handleCompanySelectionChange);
 }
 
@@ -103,8 +93,6 @@ function handleCompanySelectionChange() {
         roleInput.value = selectedCompany.role;
     }
 }
-
-// --- Event Listeners ---
 
 if (avatarButton) {
     avatarButton.addEventListener('click', () => avatarInput.click());
@@ -136,27 +124,21 @@ if (profileForm) {
         const newRole = roleInput.value;
         const newNickname = nicknameInput.value;
 
-        // Create a deep copy of the companies array to modify it
         const updatedCompanies = userProfile.companies.map(membership => {
             if (membership.companyId === selectedCompanyId) {
-                // Return a new object with the updated role
                 return { ...membership, role: newRole };
             }
-            // Return the original object if it's not the one we're editing
             return membership;
         });
 
-        // Prepare the final data object for Firestore update
         const newData = {
             nickname: newNickname,
             companies: updatedCompanies
-            // We include the full 'companies' array to overwrite the old one
         };
 
         try {
             await updateUserProfile(currentUser.uid, newData);
             showToast('Profile saved successfully!');
-            // Refresh local data to reflect the change
             loadProfileData();
         } catch (error) {
             console.error("Error saving profile:", error);
