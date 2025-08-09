@@ -134,16 +134,16 @@ function setupListeners() {
 
     appState.presenceListener = listenToCompanyPresence(appState.company.id, (users) => {
         appState.team = users;
-        UImanager.renderTeamList(appState.team); // UNCOMMENTED THIS
+        UImanager.renderTeamList(appState.team);
     });
 
     appState.chatListener = listenToCompanyChat(appState.company.id, (messages) => {
-        UImanager.renderChatMessages(messages, appState.user.uid); // UNCOMMENTED THIS
+        UImanager.renderChatMessages(messages, appState.user.uid);
     });
 
     appState.notificationsListener = listenToNotifications(appState.user.uid, (notifications) => {
         appState.notifications = notifications;
-        // UImanager.updateNotificationBell(notifications); // This can be uncommented once the UI element exists
+        // UImanager.updateNotificationBell(notifications); // This can be enabled when the UI element is ready
     });
 }
 
@@ -167,7 +167,7 @@ function switchProject(projectId) {
 
     appState.tasksListener = listenToCompanyTasks(appState.company.id, projectId, (tasks) => {
         appState.tasks = tasks;
-        UImanager.renderListView(tasks);
+        UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
     });
 }
 
@@ -193,6 +193,14 @@ function setupUI() {
     document.getElementById('logout-button').addEventListener('click', () => {
         localStorage.removeItem('selectedCompanyId');
         signOut();
+    });
+
+    document.getElementById('view-switcher').addEventListener('click', (e) => {
+        if (e.target.matches('.view-btn')) {
+            appState.currentView = e.target.dataset.view;
+            UImanager.switchView(appState.currentView);
+            UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
+        }
     });
 
     document.getElementById('project-list').addEventListener('click', (e) => {
@@ -222,7 +230,7 @@ function setupUI() {
 
     document.getElementById('search-bar').addEventListener('input', (e) => {
         appState.searchTerm = e.target.value;
-        UImanager.renderListView(filterTasks(appState.tasks, appState.searchTerm));
+        UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
     });
 
     document.getElementById('team-chat-form').addEventListener('submit', (e) => {
