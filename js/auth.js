@@ -1,8 +1,8 @@
 // FILE: js/auth.js
 import { auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { signIn, registerUser, signOut, sendVerificationEmail, sendPasswordReset } from './firebase-service.js';
-import { initializeI18n } from './i18n.js';
+import { signIn, registerUser, signOut, sendVerificationEmail, sendPasswordReset } from './services/auth.js';
+import { initializeI18n, getTranslatedString } from './i18n.js';
 import { showToast } from './toast.js';
 import { validateForm, setupLiveValidation } from './validation.js';
 
@@ -73,7 +73,7 @@ async function handleLogin(event, elements) {
         }
     } catch (error) {
         console.error("Login failed:", error.code);
-        showToast('Invalid credentials. Please check your email and password.', 'error');
+        showToast(getTranslatedString('invalidCredentials'), 'error');
         emailVerificationNotice.classList.add('hidden');
     } finally {
         submitButton.disabled = false;
@@ -112,11 +112,13 @@ async function handleRegistration(event) {
         // This will now log the full error from Firebase, including the index link
         console.error("Full Firebase Error:", error);
         
-        let message = error.message || 'An unknown error occurred.';
+        let message;
         if (error.code === 'auth/email-already-in-use') {
-            message = 'This email address is already registered. Please try logging in.';
+            message = getTranslatedString('emailInUse');
         } else if (error.code === 'failed-precondition') {
-            message = 'A database index is required. Please check the developer console for a link to create it.';
+            message = getTranslatedString('requiredIndex');
+        } else {
+            message = getTranslatedString('genericError');
         }
         
         showToast(message, 'error');
