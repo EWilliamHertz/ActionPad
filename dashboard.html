@@ -6,6 +6,8 @@
     <title>Your Dashboard - ActionPad</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- NEW: Added Chart.js library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div id="toast-container"></div>
@@ -38,14 +40,17 @@
                     </div>
                 </div>
                 <aside class="dashboard-sidebar">
+                    <!-- NEW: Widget for Task Status Chart -->
+                    <div id="task-status-widget" class="dashboard-widget">
+                        <h4>Tasks by Status</h4>
+                        <div style="position: relative; height:250px;">
+                            <canvas id="task-status-chart"></canvas>
+                        </div>
+                    </div>
                     <div id="upcoming-deadlines-widget" class="dashboard-widget">
                         <h4>Upcoming Deadlines</h4>
                         <div class="skeleton-widget-item"></div>
                         <div class="skeleton-widget-item"></div>
-                    </div>
-                    <div id="my-activity-widget" class="dashboard-widget">
-                        <h4 data-i18n="myActivity">My Activity</h4>
-                        <p>Activity feed coming soon...</p>
                     </div>
                 </aside>
             </div>
