@@ -1,6 +1,7 @@
 // FILE: js/uiManager.js
 import * as taskController from './taskController.js';
 import * as firebaseService from './firebase-service.js';
+import { showToast } from './toast.js';
 
 let appState = null;
 let activeCommentsListener = null;
@@ -233,14 +234,33 @@ export const setupModals = () => {
             });
         }
     });
+
     const editTaskForm = document.getElementById('edit-task-form');
     if (editTaskForm) {
-        editTaskForm.addEventListener('submit', (e) => {
+        // FIXED: Re-architected the submit handler to be robust.
+        editTaskForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            taskController.handleEditTask();
-            closeModal(taskModal);
+            const saveButton = editTaskForm.querySelector('button[type="submit"]');
+            saveButton.disabled = true;
+            saveButton.textContent = 'Saving...';
+
+            try {
+                // Await the promise from the controller.
+                await taskController.handleEditTask();
+                showToast('Task updated successfully!', 'success');
+                closeModal(taskModal);
+            } catch (err) {
+                // If the promise rejects, show an error.
+                console.error("Update task failed:", err);
+                showToast(`Error: ${err.message}`, 'error');
+            } finally {
+                // Always re-enable the button.
+                saveButton.disabled = false;
+                saveButton.textContent = 'Save Changes';
+            }
         });
     }
+
     const copyInviteBtn = document.getElementById('copy-invite-link-button');
     if (copyInviteBtn) {
         copyInviteBtn.addEventListener('click', () => {
@@ -357,7 +377,6 @@ const renderComments = (comments) => {
     (comments || []).forEach(comment => {
         const item = document.createElement('div');
         const author = comment.author?.nickname || 'User';
-        // FIX: Use new formatDateTime function
         const timestamp = comment.createdAt ? formatDateTime(comment.createdAt) : '';
 
         if (comment.type === 'comment') {
