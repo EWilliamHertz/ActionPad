@@ -11,7 +11,7 @@ export * from './comment.js';
 export * from './ai.js';
 export * from './attachment.js';
 
-// This function is still needed by dashboard.js and uses functions from multiple services
+// This function is needed by dashboard.js and uses functions from multiple services
 import { getCompany } from './company.js';
 import { tasksCollection, usersCollection } from './firestore.js';
 import { query, where, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
