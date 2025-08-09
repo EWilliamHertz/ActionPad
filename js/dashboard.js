@@ -12,6 +12,7 @@ import {
 import { showToast } from './toast.js';
 
 let currentUser = null;
+let taskStatusChart = null; // Variable to hold the chart instance
 
 const getUserProfileWithRetry = async (userId, retries = 3, delay = 1000) => {
     for (let i = 0; i < retries; i++) {
@@ -33,7 +34,7 @@ onAuthStateChanged(auth, async (user) => {
             const profile = profileSnap.data();
             updateUserInfo(profile);
             renderCompanyCards(profile.companies || []);
-            renderDashboardWidgets(user.uid);
+            renderDashboardWidgets(user.uid, profile.companyIds || []);
         } else {
             showToast("Could not load your user profile.", "error");
             renderCompanyCards([]);
@@ -136,7 +137,8 @@ function createCompanyCard(data, membership) {
 }
 
 
-async function renderDashboardWidgets(userId) {
+async function renderDashboardWidgets(userId, companyIds) {
+    // Upcoming Deadlines Widget
     const upcomingDeadlinesContainer = document.getElementById('upcoming-deadlines-widget');
     upcomingDeadlinesContainer.innerHTML = '<h4>Upcoming Deadlines</h4><div class="skeleton-widget-item"></div><div class="skeleton-widget-item"></div>';
     
@@ -154,6 +156,61 @@ async function renderDashboardWidgets(userId) {
     } else {
         upcomingDeadlinesContainer.innerHTML += '<p>No upcoming deadlines in the next 7 days.</p>';
     }
+
+    // Task Status Chart Widget
+    const allTasks = [];
+    for (const id of companyIds) {
+        const data = await getCompanyDashboardData(id);
+        allTasks.push(...data.tasks);
+    }
+    renderTaskStatusChart(allTasks);
+}
+
+function renderTaskStatusChart(tasks) {
+    const ctx = document.getElementById('task-status-chart').getContext('2d');
+    
+    const statusCounts = tasks.reduce((acc, task) => {
+        const status = task.status || 'todo';
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+    }, {});
+
+    const data = {
+        labels: ['To Do', 'In Progress', 'Done'],
+        datasets: [{
+            label: 'Tasks by Status',
+            data: [
+                statusCounts['todo'] || 0,
+                statusCounts['in-progress'] || 0,
+                statusCounts['done'] || 0
+            ],
+            backgroundColor: [
+                '#F6E05E', // Medium Priority Color (for To Do)
+                '#4A90E2', // Primary Color (for In Progress)
+                '#68D391'  // Low Priority/Success Color (for Done)
+            ],
+            borderColor: '#FFFFFF',
+            borderWidth: 2
+        }]
+    };
+
+    if (taskStatusChart) {
+        taskStatusChart.destroy();
+    }
+
+    taskStatusChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: data,
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                }
+            }
+        }
+    });
 }
 
 
@@ -173,12 +230,11 @@ document.querySelectorAll('.modal-close').forEach(btn => {
 document.getElementById('join-company-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const referralId = document.getElementById('join-referral-id').value;
-    const userRole = document.getElementById('join-company-role').value; // READ THE ROLE FROM THE NEW INPUT
+    const userRole = document.getElementById('join-company-role').value; 
     try {
-        // PASS THE ROLE TO THE FUNCTION
         await joinCompanyWithReferralId(currentUser, referralId, userRole);
         showToast('Successfully joined company!', 'success');
-        location.reload(); // Reload the page to show the new company
+        location.reload(); 
     } catch (error) {
         showToast(error.message, 'error');
     }
