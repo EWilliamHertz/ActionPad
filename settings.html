@@ -12,32 +12,42 @@
     <div class="settings-page-container">
         <header class="settings-header">
             <h1>Settings</h1>
-            <a href="index.html" class="back-link">&larr; Back to ActionPad</a>
+            <a href="dashboard.html" class="back-link">&larr; Back to Dashboard</a>
         </header>
 
         <main class="settings-main">
-            <!-- Profile Information Section -->
             <div class="settings-card">
                 <h2>Profile Information</h2>
                 <form id="profile-info-form" class="settings-form">
-                    <div class="avatar-upload-container">
-                        <img id="avatar-preview" src="https://placehold.co/100x100/E9ECEF/495057?text=Avatar" alt="Your Avatar">
-                        <input type="file" id="avatar-upload-input" accept="image/png, image/jpeg" class="hidden">
-                        <button type="button" id="avatar-upload-button">Change Avatar</button>
+                    <div class="form-section">
+                        <h4>Universal Settings</h4>
+                        <div class="avatar-upload-container">
+                            <img id="avatar-preview" src="https://placehold.co/100x100/E9ECEF/495057?text=Avatar" alt="Your Avatar">
+                            <input type="file" id="avatar-upload-input" accept="image/png, image/jpeg" class="hidden">
+                            <button type="button" id="avatar-upload-button">Change Avatar</button>
+                        </div>
+                        <div class="form-group">
+                            <label for="profile-nickname">Nickname (Universal)</label>
+                            <input type="text" id="profile-nickname" required>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="profile-nickname">Nickname</label>
-                        <input type="text" id="profile-nickname" required>
+
+                    <div class="form-section">
+                        <h4>Company-Specific Settings</h4>
+                        <div class="form-group">
+                            <label for="company-select">Edit Role For Company</label>
+                            <select id="company-select"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="profile-companyrole">Your Role in Selected Company</label>
+                            <input type="text" id="profile-companyrole" required>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="profile-companyrole">Your Role</label>
-                        <input type="text" id="profile-companyrole" required>
-                    </div>
-                    <button type="submit">Save Profile</button>
+                    
+                    <button type="submit">Save Profile Changes</button>
                 </form>
             </div>
 
-            <!-- Change Password Section -->
             <div class="settings-card">
                 <h2>Change Password</h2>
                 <form id="change-password-form" class="settings-form">
