@@ -80,55 +80,63 @@ const handleAddTask = (text) => {
  * Gathers all data from the modal and updates the task in Firestore.
  */
 export const handleEditTask = async () => {
+    console.log("%cDEBUG: handleEditTask function initiated.", "color: blue; font-weight: bold;");
+
     const taskId = document.getElementById('edit-task-id').value;
+    console.log("DEBUG: Task ID from form:", taskId);
+
     if (!taskId) {
+        console.error("DEBUG: No task ID found in the form. Aborting update.");
         showToast("Error: No task ID found.", "error");
         return;
     }
 
-    const taskSnap = await firebaseService.getTask(taskId);
-    if (!taskSnap.exists()) {
-        showToast("Task not found. It may have been deleted.", "error");
-        throw new Error("Task not found.");
-    }
-    const existingTaskData = taskSnap.data();
-    const oldAssignees = existingTaskData.assignedTo || [];
-
-    // Correctly gather all selected assignee IDs from the multi-select dropdown
-    const assigneesSelect = document.getElementById('edit-task-assignees');
-    const newAssignees = Array.from(assigneesSelect.selectedOptions).map(option => option.value);
-
-    // Construct the complete updated data object from the form fields
-    const updatedData = {
-        name: document.getElementById('edit-task-name').value,
-        description: document.getElementById('edit-task-description').value,
-        dueDate: document.getElementById('edit-task-due-date').value,
-        priority: document.getElementById('edit-task-priority').value,
-        status: document.getElementById('edit-task-status').value,
-        projectId: document.getElementById('edit-task-project').value,
-        assignedTo: newAssignees,
-    };
-
-    // Create notifications for any newly assigned users
-    newAssignees.forEach(userId => {
-        if (!oldAssignees.includes(userId)) {
-            firebaseService.createNotification(userId, {
-                text: `${appState.profile.nickname} assigned you a new task: "${updatedData.name}"`,
-                taskId: taskId
-            });
+    try {
+        const taskSnap = await firebaseService.getTask(taskId);
+        if (!taskSnap.exists()) {
+            console.error("DEBUG: Task with ID not found in Firestore:", taskId);
+            showToast("Task not found. It may have been deleted.", "error");
+            return; // Stop execution if task doesn't exist
         }
-    });
 
-    // Call the update service and handle the result
-    return firebaseService.updateTask(taskId, updatedData)
-        .then(() => {
-            showToast('Task updated successfully!', 'success');
-        })
-        .catch(err => {
-            console.error("Controller caught task update error:", err);
-            showToast(`Update failed: ${err.message}`, 'error');
-            throw err; // Re-throw the error to be handled by the caller if necessary
+        const existingTaskData = taskSnap.data();
+        console.log("DEBUG: Existing task data from Firestore:", existingTaskData);
+        const oldAssignees = existingTaskData.assignedTo || [];
+
+        const assigneesSelect = document.getElementById('edit-task-assignees');
+        const newAssignees = Array.from(assigneesSelect.selectedOptions).map(option => option.value);
+        console.log("DEBUG: New assignees selected in form:", newAssignees);
+
+        const updatedData = {
+            name: document.getElementById('edit-task-name').value,
+            description: document.getElementById('edit-task-description').value,
+            dueDate: document.getElementById('edit-task-due-date').value,
+            priority: document.getElementById('edit-task-priority').value,
+            status: document.getElementById('edit-task-status').value,
+            projectId: document.getElementById('edit-task-project').value,
+            assignedTo: newAssignees,
+        };
+        console.log("DEBUG: Constructed updatedData object to send to Firebase:", updatedData);
+
+        newAssignees.forEach(userId => {
+            if (!oldAssignees.includes(userId)) {
+                console.log(`DEBUG: Creating notification for new assignee: ${userId}`);
+                firebaseService.createNotification(userId, {
+                    text: `${appState.profile.nickname} assigned you a new task: "${updatedData.name}"`,
+                    taskId: taskId
+                });
+            }
         });
+
+        console.log("DEBUG: Calling firebaseService.updateTask...");
+        await firebaseService.updateTask(taskId, updatedData);
+        console.log("%cDEBUG: firebaseService.updateTask successful.", "color: green; font-weight: bold;");
+        showToast('Task updated successfully!', 'success');
+
+    } catch (err) {
+        console.error("%cDEBUG: An error occurred in handleEditTask:", "color: red; font-weight: bold;", err);
+        showToast(`Update failed: ${err.message}`, 'error');
+    }
 };
 
 
@@ -200,7 +208,7 @@ export const addComment = (taskId, text, mentions) => {
         text,
         author: {
             uid: appState.user.uid,
-            nickname: app_state.profile.nickname,
+            nickname: appState.profile.nickname,
             avatarURL: appState.profile.avatarURL || null
         }
     };
