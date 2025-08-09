@@ -9,11 +9,23 @@ export const initUIManager = (state) => {
     appState = state;
 };
 
-// --- Helper function to format timestamps ---
-function formatTimestamp(timestamp) {
+// --- Helper functions for formatting dates and times ---
+function formatDateTime(timestamp) {
     if (!timestamp) return '';
     const date = timestamp.toDate();
-    return date.toLocaleString([], { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleString(undefined, { 
+        month: 'short', 
+        day: 'numeric',
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+    });
+}
+
+function formatTime(timestamp) {
+    if (!timestamp) return '';
+    const date = timestamp.toDate();
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatLastSeen(timestamp) {
@@ -131,7 +143,6 @@ const createTaskElement = (task) => {
     item.className = `task-item ${task.status === 'done' ? 'done' : ''}`;
     item.dataset.id = task.id;
     
-    // The task name will be populated asynchronously
     item.innerHTML = `
         <input type="checkbox" class="task-checkbox" ${task.status === 'done' ? 'checked' : ''}>
         <div class="task-content">
@@ -146,7 +157,6 @@ const createTaskElement = (task) => {
         </div>
     `;
 
-    // Asynchronously translate and update the task name
     const taskNameEl = item.querySelector('.task-name');
     renderTranslatedText(taskNameEl, task.name, task.language);
 
@@ -205,7 +215,7 @@ const renderCalendarView = (tasks) => {
         tasksForDay.forEach(task => {
             const taskEl = document.createElement('div');
             taskEl.className = 'calendar-task';
-            taskEl.textContent = task.name; // Translation could be added here too if needed
+            taskEl.textContent = task.name;
             taskEl.addEventListener('click', () => openModal(taskModal, task));
             tasksContainer.appendChild(taskEl);
         });
@@ -288,7 +298,6 @@ export const openModal = (modalElement, task = null) => {
             assigneesSelect.appendChild(option);
         });
 
-        // FIXED: Populate the project dropdown
         const projectSelect = document.getElementById('edit-task-project');
         projectSelect.innerHTML = '';
         appState.projects.forEach(project => {
@@ -348,7 +357,8 @@ const renderComments = (comments) => {
     (comments || []).forEach(comment => {
         const item = document.createElement('div');
         const author = comment.author?.nickname || 'User';
-        const timestamp = comment.createdAt ? formatTimestamp(comment.createdAt) : '';
+        // FIX: Use new formatDateTime function
+        const timestamp = comment.createdAt ? formatDateTime(comment.createdAt) : '';
 
         if (comment.type === 'comment') {
             const avatarSrc = comment.author?.avatarURL || `https://placehold.co/32x32/E9ECEF/495057?text=${author.charAt(0).toUpperCase()}`;
@@ -378,7 +388,6 @@ const renderComments = (comments) => {
     });
 };
 
-// NEW: Render Chat Messages
 export const renderChatMessages = (messages, currentUserId) => {
     const chatMessagesEl = document.getElementById('team-chat-messages');
     if (!chatMessagesEl) return;
@@ -389,7 +398,7 @@ export const renderChatMessages = (messages, currentUserId) => {
         item.className = `chat-message ${isSelf ? 'is-self' : ''}`;
 
         const author = msg.author?.nickname || 'User';
-        const timestamp = msg.createdAt ? formatTimestamp(msg.createdAt) : '';
+        const timestamp = msg.createdAt ? formatTime(msg.createdAt) : '';
         const avatarSrc = msg.author?.avatarURL || `https://placehold.co/32x32/E9ECEF/495057?text=${author.charAt(0).toUpperCase()}`;
 
         item.innerHTML = `
@@ -404,19 +413,17 @@ export const renderChatMessages = (messages, currentUserId) => {
         `;
         chatMessagesEl.appendChild(item);
     });
-    // Scroll to the bottom
     chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
 };
 
-
-// NEW: Asynchronously translate and render text
 async function renderTranslatedText(element, text, originalLanguage) {
     const userLanguage = localStorage.getItem('actionPadLanguage') || 'en';
     if (originalLanguage && originalLanguage !== userLanguage) {
+        element.textContent = 'Translating...';
         try {
             const translatedText = await firebaseService.translateText(text, userLanguage);
             element.textContent = translatedText;
-            element.title = `Original: ${text}`; // Show original on hover
+            element.title = `Original: ${text}`;
         } catch (e) {
             element.textContent = text; // Show original on error
         }
