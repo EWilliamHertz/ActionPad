@@ -1,13 +1,18 @@
 // FILE: js/app.js
 import { auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import {
-    signOut, getUserProfile, getCompany, listenToCompanyTasks, listenToCompanyProjects,
-    manageUserPresence, listenToCompanyPresence, uploadProjectLogo, updateProject,
-    listenToCompanyChat, addChatMessage, listenToNotifications, markNotificationsAsRead
-} from './firebase-service.js';
-import { initializeI18n } from './i18n.js';
-import * as uiManager from './uiManager.js';
+import { signOut } from './services/auth.js';
+import { getUserProfile } from './services/user.js';
+import { getCompany } from './services/company.js';
+import { listenToCompanyTasks } from './services/task.js';
+import { listenToCompanyProjects } from './services/project.js';
+import { manageUserPresence, listenToCompanyPresence } from './services/presence.js';
+import { uploadProjectLogo, updateProject } from './services/project.js';
+import { listenToCompanyChat, addChatMessage } from './services/chat.js';
+import { listenToNotifications, markNotificationsAsRead } from './services/notification.js';
+
+import { initializeI18n, setLanguage } from './i18n.js';
+import * UImanager from './ui/uiManager.js';
 import * as taskController from './taskController.js';
 import { showToast } from './toast.js';
 
@@ -33,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             const profile = profileSnap.data();
-            
+
             const companies = profile.companies || [];
             if (companies.length > 1 && !localStorage.getItem('selectedCompanyId')) {
                 window.location.replace('dashboard.html');
@@ -79,26 +84,26 @@ async function initialize(companyId) {
             throw new Error("You are not a member of this company.");
         }
 
-        appState.profile = { 
-            uid: appState.user.uid, 
+        appState.profile = {
+            uid: appState.user.uid,
             ...fullProfile,
-            companyRole: companyMembership.role 
+            companyRole: companyMembership.role
         };
-        
+
         const companySnap = await getCompany(companyId);
         if (!companySnap.exists()) throw new Error("Company data not found.");
         appState.company = {id: companySnap.id, ...companySnap.data()};
-        
+
         taskController.initTaskController(appState);
-        uiManager.initUIManager(appState);
+        UImanager.initUIManager(appState);
 
         setupUI();
         setupListeners();
         manageUserPresence(appState.user, companyId);
-        
+
         document.getElementById('app-container').classList.remove('hidden');
         console.log("Initialization complete. App is ready.");
-        
+
     } catch (error) {
         console.error("CRITICAL INITIALIZATION FAILURE:", error);
         showToast(error.message || 'Could not initialize the application.', 'error');
@@ -116,53 +121,53 @@ function setupListeners() {
 
     appState.projectsListener = listenToCompanyProjects(appState.company.id, (projects) => {
         appState.projects = projects;
-        uiManager.renderProjectList(appState.projects, appState.currentProjectId);
+        UImanager.renderProjectList(appState.projects, appState.currentProjectId);
         if (appState.currentProjectId !== 'all') {
             const updatedProject = projects.find(p => p.id === appState.currentProjectId);
             if (updatedProject) {
-                uiManager.updateProjectHeader(updatedProject);
+                UImanager.updateProjectHeader(updatedProject);
             }
         }
     });
-    
+
     switchProject('all');
-    
+
     appState.presenceListener = listenToCompanyPresence(appState.company.id, (users) => {
         appState.team = users;
-        uiManager.renderTeamList(appState.team);
+        UImanager.renderTeamList(appState.team);
     });
 
     appState.chatListener = listenToCompanyChat(appState.company.id, (messages) => {
-        uiManager.renderChatMessages(messages, appState.user.uid);
+        UImanager.renderChatMessages(messages, appState.user.uid);
     });
 
     appState.notificationsListener = listenToNotifications(appState.user.uid, (notifications) => {
         appState.notifications = notifications;
-        uiManager.updateNotificationBell(notifications);
+        UImanager.updateNotificationBell(notifications);
     });
 }
 
 
 function switchProject(projectId) {
     appState.currentProjectId = projectId;
-    
+
     if (appState.tasksListener) {
-        appState.tasksListener(); 
+        appState.tasksListener();
     }
-    
-    uiManager.renderProjectList(appState.projects, projectId);
+
+    UImanager.renderProjectList(appState.projects, projectId);
     if (projectId === 'all') {
-        uiManager.hideProjectHeader();
+        UImanager.hideProjectHeader();
     } else {
         const project = appState.projects.find(p => p.id === projectId);
         if (project) {
-            uiManager.updateProjectHeader(project);
+            UImanager.updateProjectHeader(project);
         }
     }
 
     appState.tasksListener = listenToCompanyTasks(appState.company.id, projectId, (tasks) => {
         appState.tasks = tasks;
-        uiManager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
+        UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
     });
 }
 
@@ -183,18 +188,18 @@ async function handleLogoUpload(e) {
 
 function setupUI() {
     initializeI18n();
-    uiManager.updateUserInfo(appState.profile, appState.company);
-    
+    UImanager.updateUserInfo(appState.profile, appState.company);
+
     document.getElementById('logout-button').addEventListener('click', () => {
         localStorage.removeItem('selectedCompanyId');
         signOut();
     });
-    
+
     document.getElementById('view-switcher').addEventListener('click', (e) => {
         if (e.target.matches('.view-btn')) {
             appState.currentView = e.target.dataset.view;
-            uiManager.switchView(appState.currentView);
-            uiManager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
+            UImanager.switchView(appState.currentView);
+            UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
         }
     });
 
@@ -206,7 +211,7 @@ function setupUI() {
             }
         }
     });
-    
+
     const logoUploadInput = document.getElementById('logo-upload-input');
     const changeLogoBtn = document.getElementById('change-logo-btn');
     if(changeLogoBtn) changeLogoBtn.addEventListener('click', () => logoUploadInput.click());
@@ -216,16 +221,16 @@ function setupUI() {
         const currentPath = window.location.href;
         const basePath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
         const inviteLink = `${basePath}register.html?ref=${appState.company.referralId}`;
-        uiManager.openInviteModal(inviteLink);
+        UImanager.openInviteModal(inviteLink);
     });
-    
+
     document.getElementById('hamburger-menu').addEventListener('click', () => {
         document.getElementById('sidebar').classList.toggle('open');
     });
-    
+
     document.getElementById('search-bar').addEventListener('input', (e) => {
         appState.searchTerm = e.target.value;
-        uiManager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
+        UImanager.renderView(appState.currentView, filterTasks(appState.tasks, appState.searchTerm));
     });
 
     document.getElementById('team-chat-form').addEventListener('submit', (e) => {
@@ -243,19 +248,19 @@ function setupUI() {
             input.value = '';
         }
     });
-    
+
     // NEW: Command Palette Listener
     document.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
             e.preventDefault();
-            uiManager.openCommandPalette();
+            UImanager.openCommandPalette();
         }
     });
-    
+
     document.getElementById('command-palette-input').addEventListener('input', (e) => {
-        uiManager.renderCommandPaletteResults(e.target.value.toLowerCase(), appState);
+        UImanager.renderCommandPaletteResults(e.target.value.toLowerCase(), appState);
     });
-    
+
     // NEW: Notification Bell Listener
     document.getElementById('notification-bell').addEventListener('click', () => {
         const dropdown = document.getElementById('notification-dropdown');
@@ -266,12 +271,22 @@ function setupUI() {
         }
     });
 
+    // Language switcher in main app
+    const languageSwitcher = document.getElementById('language-switcher');
+    if (languageSwitcher) {
+        languageSwitcher.addEventListener('click', (e) => {
+            if (e.target.matches('.lang-btn')) {
+                setLanguage(e.target.dataset.lang);
+            }
+        });
+    }
+
 
     taskController.setupProjectForm(appState);
     taskController.setupTaskForm();
-    
-    uiManager.setupModals();
-    uiManager.setupEventListeners();
+
+    UImanager.setupModals();
+    UImanager.setupEventListeners();
 }
 
 function filterTasks(tasks, searchTerm) {
