@@ -4,7 +4,8 @@ export * from './taskRenderer.js';
 export * from './modalManager.js';
 export * from './detailsRenderer.js';
 export * from './i18n.js';
-export * from './sidebarRenderer.js'; // <-- ADD THIS LINE
+export * from './sidebarRenderer.js';
+export * from './viewManager.js'; // <-- ADD THIS LINE
 
 // --- Other UI utility functions ---
 
@@ -51,6 +52,5 @@ export const renderProjectList = (projects, currentProjectId) => {
 };
 
 export const initUIManager = (state) => {
-    // This can be expanded later if some UI components need direct access to the app state
     console.log("UI Manager Initialized");
 };
