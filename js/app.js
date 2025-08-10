@@ -49,6 +49,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const companyIdToLoad = localStorage.getItem('selectedCompanyId') || companies[0]?.companyId;
 
             if (companyIdToLoad) {
+                // FIX: Ensure companyId is set in localStorage BEFORE initializing to prevent redirect loops.
+                localStorage.setItem('selectedCompanyId', companyIdToLoad);
                 initialize(companyIdToLoad);
             } else {
                 window.location.replace('dashboard.html');
@@ -101,7 +103,8 @@ async function initialize(companyId) {
 
         setupUI();
         setupListeners();
-        manageUserPresence(appState.user, companyId);
+        // FIX: Call the updated presence management function which now correctly uses RTDB.
+        manageUserPresence(appState.user);
 
         document.getElementById('app-container').classList.remove('hidden');
         console.log("Initialization complete. App is ready.");
@@ -136,6 +139,7 @@ function setupListeners() {
 
     appState.notificationsListener = listenToNotifications(appState.user.uid, (notifications) => {
         appState.notifications = notifications;
+        // This is a good place to update the notification bell UI if you have one
     });
     
     switchProject('all');
@@ -201,7 +205,7 @@ function applyFiltersAndSorts(tasks) {
 }
 
 function setupUI() {
-    initializeI18n();
+    UImanager.initializeI18n();
     UImanager.updateUserInfo(appState.profile, appState.company);
 
     document.getElementById('logout-button').addEventListener('click', () => {
