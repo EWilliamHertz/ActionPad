@@ -1,11 +1,16 @@
 // FILE: js/chat.js
+// This file contains all logic for the dedicated chat page, including text chat and WebRTC voice chat.
 
-// --- Import necessary Firebase services and the ALREADY INITIALIZED instances ---
+// --- Import necessary Firebase services ---
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, doc, collection, onSnapshot, updateDoc, arrayUnion, arrayRemove, setDoc, getDoc, deleteDoc, serverTimestamp, writeBatch, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+    getFirestore, doc, collection, onSnapshot, updateDoc,
+    setDoc, getDoc, deleteDoc, serverTimestamp, writeBatch,
+    addDoc, query, where, orderBy
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { db, auth } from './firebase-config.js';
 
-// --- Import your existing services ---
+// --- Import your existing helper/service modules ---
 import { signOut } from './services/auth.js';
 import { getUserProfile } from './services/user.js';
 import { getCompany } from './services/company.js';
@@ -15,7 +20,7 @@ import { listenToProjectChat, addChatMessage } from './services/chat.js';
 import { showToast } from './toast.js';
 
 // --- STATE MANAGEMENT ---
-let appState = {
+const appState = {
     user: null,
     profile: null,
     company: null,
@@ -27,14 +32,13 @@ let appState = {
         team: null,
         voiceRooms: null,
         chat: null,
-        // Map to store unsubscribe functions for each voice room's peer listener
         voiceRoomPeerListeners: new Map(),
     },
     localStream: null,
-    peerConnections: {},
+    peerConnections: {}, // Stores { pc, listener } for each peer
     currentVoiceRoom: null,
-    voiceRoomUnsubscribe: null,
-    voiceActivityDetectors: new Map(),
+    voiceRoomUnsubscribe: null, // Listener for peers in the current room
+    voiceActivityDetectors: new Map(), // Stores { context, animationFrameId }
 };
 
 // --- DOM ELEMENTS ---
@@ -59,7 +63,6 @@ const rtcConfiguration = {
         ],
     }, ],
 };
-
 
 // --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -106,7 +109,7 @@ function setupListeners() {
     appState.listeners.voiceRoomPeerListeners.forEach(unsub => unsub());
     appState.listeners.voiceRoomPeerListeners.clear();
 
-
+    // Listen to projects in the company
     appState.listeners.projects = listenToCompanyProjects(appState.company.id, (projects) => {
         appState.projects = projects;
         renderProjectList();
@@ -115,38 +118,43 @@ function setupListeners() {
         }
     });
 
+    // Listen to team member presence
     appState.listeners.team = listenToCompanyPresence(appState.company.id, (team) => {
         appState.team = team;
         renderTeamList();
+        // Re-render voice room members if team data updates
+        if (appState.currentVoiceRoom) {
+            const roomEl = DOM.voiceRoomList.querySelector(`.voice-room-item[data-room-name="${appState.currentVoiceRoom}"]`);
+            if (roomEl) {
+                 const membersDiv = roomEl.querySelector('.voice-room-members');
+                 const peerIds = Array.from(membersDiv.children).map(child => child.id.replace('avatar-', ''));
+                 renderVoiceRoomMembers(appState.currentVoiceRoom, peerIds);
+            }
+        }
     });
 
-    // CORRECTED: This listener now manages individual peer listeners for each room
+    // Listen to all voice rooms to know who is in which room
     const voiceRoomsCollectionRef = collection(db, 'rooms');
     appState.listeners.voiceRooms = onSnapshot(voiceRoomsCollectionRef, (snapshot) => {
-        const currentRoomIds = new Set(snapshot.docs.map(doc => doc.id));
+        const roomsData = new Map();
+        snapshot.docs.forEach(doc => roomsData.set(doc.id, []));
 
-        // Set up new listeners for added rooms
-        currentRoomIds.forEach(roomId => {
-            if (!appState.listeners.voiceRoomPeerListeners.has(roomId)) {
-                const peersCollectionRef = collection(db, 'rooms', roomId, 'peers');
-                const unsubscribe = onSnapshot(peersCollectionRef, (peersSnapshot) => {
-                    const peerIds = peersSnapshot.docs.map(peerDoc => peerDoc.id);
-                    renderVoiceRoomMembers(roomId, peerIds);
-                });
-                appState.listeners.voiceRoomPeerListeners.set(roomId, unsubscribe);
-            }
-        });
-
-        // Clean up listeners for removed rooms
-        appState.listeners.voiceRoomPeerListeners.forEach((unsubscribe, roomId) => {
-            if (!currentRoomIds.has(roomId)) {
-                unsubscribe();
-                appState.listeners.voiceRoomPeerListeners.delete(roomId);
-            }
+        // Create a batch of promises to get all peers for all rooms
+        const peerPromises = snapshot.docs.map(roomDoc =>
+            getDocs(collection(db, 'rooms', roomDoc.id, 'peers')).then(peersSnapshot => {
+                const peerIds = peersSnapshot.docs.map(peerDoc => peerDoc.id);
+                roomsData.set(roomDoc.id, peerIds);
+            })
+        );
+        
+        // Once all peer data is fetched, render it
+        Promise.all(peerPromises).then(() => {
+            roomsData.forEach((peerIds, roomId) => {
+                renderVoiceRoomMembers(roomId, peerIds);
+            });
         });
     });
 }
-
 
 // --- UI EVENT HANDLERS ---
 function setupUIEvents() {
@@ -154,10 +162,12 @@ function setupUIEvents() {
         await handleLeaveVoiceRoom();
         signOut();
     });
+
     DOM.projectList.addEventListener('click', (e) => {
         const item = e.target.closest('.project-item-chat');
         if (item) switchProject(item.dataset.projectId);
     });
+
     DOM.chatForm.addEventListener('submit', handleSendMessage);
 
     DOM.voiceRoomList.addEventListener('click', (e) => {
@@ -184,7 +194,47 @@ function setupUIEvents() {
 
 // --- RENDER FUNCTIONS ---
 
-// This is now the single source of truth for rendering voice room members
+function renderProjectList() {
+    if (!DOM.projectList) return;
+    DOM.projectList.innerHTML = '';
+    appState.projects.forEach(project => {
+        const listItem = document.createElement('div');
+        listItem.className = `project-item-chat ${appState.selectedProjectId === project.id ? 'active' : ''}`;
+        listItem.dataset.projectId = project.id;
+        listItem.innerHTML = `<span class="project-icon">#</span><span>${project.name}</span>`;
+        DOM.projectList.appendChild(listItem);
+    });
+}
+
+function renderTeamList() {
+    if (!DOM.teamList) return;
+    DOM.teamList.innerHTML = '';
+    appState.team.forEach(member => {
+        const item = document.createElement('li');
+        item.className = 'team-member-item';
+        item.innerHTML = `<img src="${member.avatarURL || `https://placehold.co/36x36/E9ECEF/495057?text=${member.nickname.charAt(0).toUpperCase()}`}" alt="${member.nickname}" class="avatar-img"><span style="font-weight: 500;">${member.nickname}</span>`;
+        DOM.teamList.appendChild(item);
+    });
+}
+
+function renderChatMessages(messages) {
+    DOM.chatMessages.innerHTML = '';
+    if (messages.length === 0) {
+        DOM.chatMessages.innerHTML = '<div class="loader">Start the conversation!</div>';
+        return;
+    }
+    messages.forEach(message => {
+        const isSelf = message.author.uid === appState.user.uid;
+        const messageEl = document.createElement('div');
+        messageEl.className = `chat-message-full ${isSelf ? 'is-self' : ''}`;
+        const avatarSrc = message.author.avatarURL || `https://placehold.co/40x40/E9ECEF/495057?text=${message.author.nickname.charAt(0).toUpperCase()}`;
+        const timestamp = message.createdAt ? message.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+        messageEl.innerHTML = `<img src="${avatarSrc}" alt="${message.author.nickname}" class="chat-avatar"><div class="chat-message-content"><div class="chat-message-header"><span class="chat-author">${message.author.nickname}</span><span class="chat-timestamp">${timestamp}</span></div><div class="chat-text">${message.text}</div></div>`;
+        DOM.chatMessages.appendChild(messageEl);
+    });
+    DOM.chatMessages.scrollTop = DOM.chatMessages.scrollHeight;
+}
+
 function renderVoiceRoomMembers(roomName, peerIds) {
     const roomEl = DOM.voiceRoomList.querySelector(`.voice-room-item[data-room-name="${roomName}"]`);
     if (!roomEl) return;
@@ -192,24 +242,55 @@ function renderVoiceRoomMembers(roomName, peerIds) {
     const membersDiv = roomEl.querySelector('.voice-room-members');
     if (!membersDiv) return;
 
-membersDiv.innerHTML = peerIds.map(uid => {
-    const userProfile = appState.team.find(m => m.id === uid);
-    
-    // Use the user's profile if available, otherwise use placeholders.
-    const nickname = userProfile?.nickname || 'User';
-    const avatarSrc = userProfile?.avatarURL || `https://placehold.co/32x32/E9ECEF/495057?text=${nickname.charAt(0).toUpperCase()}`;
-
-    // Always return an element so the speaking indicator can attach to it.
-    return `
-        <div class="avatar-small" id="avatar-${uid}" title="${nickname}">
-            <img src="${avatarSrc}" alt="${nickname}">
-        </div>`;
-}).join('');
+    if (peerIds.length > 0) {
+        membersDiv.innerHTML = peerIds.map(uid => {
+            const userProfile = appState.team.find(m => m.id === uid);
+            const nickname = userProfile?.nickname || 'User';
+            const avatarSrc = userProfile?.avatarURL || `https://placehold.co/32x32/E9ECEF/495057?text=${nickname.charAt(0).toUpperCase()}`;
+            return `
+                <div class="avatar-small" id="avatar-${uid}" title="${nickname}">
+                    <img src="${avatarSrc}" alt="${nickname}">
+                </div>`;
+        }).join('');
     } else {
         membersDiv.innerHTML = ''; // Clear if no members
     }
 }
 
+
+// --- CORE LOGIC FUNCTIONS ---
+
+function switchProject(projectId) {
+    if (appState.listeners.chat) appState.listeners.chat();
+    appState.selectedProjectId = projectId;
+    const project = appState.projects.find(p => p.id === projectId);
+    DOM.chatProjectName.textContent = project ? project.name : 'Select a Project';
+    document.querySelectorAll('.project-item-chat').forEach(item => {
+        item.classList.toggle('active', item.dataset.projectId === projectId);
+    });
+    DOM.chatMessages.innerHTML = '<div class="loader">Loading messages...</div>';
+    appState.listeners.chat = listenToProjectChat(projectId, (messages) => {
+        renderChatMessages(messages);
+    });
+}
+
+async function handleSendMessage(e) {
+    e.preventDefault();
+    const text = DOM.chatInput.value.trim();
+    if (!text || !appState.selectedProjectId) return;
+    const author = {
+        uid: appState.user.uid,
+        nickname: appState.profile.nickname,
+        avatarURL: appState.profile.avatarURL || null
+    };
+    try {
+        await addChatMessage(appState.selectedProjectId, author, text);
+        DOM.chatInput.value = '';
+    } catch (error) {
+        console.error("Error sending message:", error);
+        showToast("Failed to send message.", "error");
+    }
+}
 
 // =================================================================
 // --- VOICE CHAT (WebRTC) LOGIC ---
@@ -236,7 +317,10 @@ async function handleJoinVoiceRoom(roomName) {
         joinedAt: serverTimestamp()
     });
 
+    // Listen for changes in the peers collection for this room
     appState.voiceRoomUnsubscribe = onSnapshot(peersCollection, (snapshot) => {
+        renderVoiceRoomMembers(roomName, snapshot.docs.map(d => d.id));
+
         for (const change of snapshot.docChanges()) {
             const peerId = change.doc.id;
             if (peerId === appState.user.uid) continue;
@@ -271,7 +355,10 @@ async function handleLeaveVoiceRoom() {
         appState.voiceRoomUnsubscribe = null;
     }
 
-    Object.values(appState.peerConnections).forEach(({ pc }) => pc.close());
+    Object.values(appState.peerConnections).forEach(({ pc, listener }) => {
+        pc.close();
+        if (listener) listener();
+    });
     appState.peerConnections = {};
 
     if (appState.localStream) {
@@ -328,9 +415,13 @@ async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
     onSnapshot(collection(remotePeerRef, 'candidates'), snapshot => {
         snapshot.docChanges().forEach(async change => {
             if (change.type === 'added') {
-                const candidate = new RTCIceCandidate(change.doc.data());
-                if (pc.remoteDescription) {
-                    await pc.addIceCandidate(candidate);
+                try {
+                    const candidate = new RTCIceCandidate(change.doc.data());
+                    if (pc.remoteDescription) {
+                        await pc.addIceCandidate(candidate);
+                    }
+                } catch (e) {
+                    console.error('Error adding received ICE candidate', e);
                 }
             }
         });
@@ -338,22 +429,22 @@ async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
 
     appState.peerConnections[remoteUserId].listener = onSnapshot(remotePeerRef, async (docSnapshot) => {
         const data = docSnapshot.data();
-        if (!pc.currentRemoteDescription && data?.offer) {
-            console.log(`Received offer from ${remoteUserId}, creating answer.`);
-            const offer = new RTCSessionDescription(data.offer);
-            await pc.setRemoteDescription(offer);
+        if (data) {
+            if (!pc.currentRemoteDescription && data.offer) {
+                console.log(`Received offer from ${remoteUserId}, creating answer.`);
+                const offer = new RTCSessionDescription(data.offer);
+                await pc.setRemoteDescription(offer);
 
-            const answerDescription = await pc.createAnswer();
-            await pc.setLocalDescription(answerDescription);
+                const answerDescription = await pc.createAnswer();
+                await pc.setLocalDescription(answerDescription);
 
-            const answer = { type: answerDescription.type, sdp: answerDescription.sdp };
-            await updateDoc(localPeerRef, { answer });
-        }
-
-        if (data?.answer && pc.signalingState !== "stable") {
-             console.log(`Received answer from ${remoteUserId}.`);
-             const answer = new RTCSessionDescription(data.answer);
-             await pc.setRemoteDescription(answer);
+                const answer = { type: answerDescription.type, sdp: answerDescription.sdp };
+                await updateDoc(localPeerRef, { answer });
+            } else if (data.answer && pc.signalingState !== "stable") {
+                 console.log(`Received answer from ${remoteUserId}.`);
+                 const answer = new RTCSessionDescription(data.answer);
+                 await pc.setRemoteDescription(answer);
+            }
         }
     });
 
@@ -364,7 +455,6 @@ async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
         await updateDoc(localPeerRef, { offer });
     }
 }
-
 
 // --- UI & UTILITY FUNCTIONS ---
 
@@ -427,7 +517,7 @@ function setupVoiceActivityDetector(stream, element, userId) {
 
         if (average > speakingThreshold) {
             element.classList.add('speaking');
-            speakingCooldown = 30;
+            speakingCooldown = 30; // Frames to stay lit after speaking stops
         } else {
             if (speakingCooldown > 0) {
                 speakingCooldown--;
@@ -436,9 +526,9 @@ function setupVoiceActivityDetector(stream, element, userId) {
             }
         }
         animationFrameId = requestAnimationFrame(detect);
-        appState.voiceActivityDetectors.set(userId, { context: audioContext, animationFrameId });
     };
     detect();
+    appState.voiceActivityDetectors.set(userId, { context: audioContext, animationFrameId });
 }
 
 function stopVoiceActivityDetector(userId) {
@@ -464,77 +554,4 @@ function updateVoiceRoomUI() {
             btn.classList.remove('active');
         }
     });
-}
-
-
-// --- ORIGINAL CHAT & PROJECT FUNCTIONS ---
-
-function switchProject(projectId) {
-    if (appState.listeners.chat) appState.listeners.chat();
-    appState.selectedProjectId = projectId;
-    const project = appState.projects.find(p => p.id === projectId);
-    DOM.chatProjectName.textContent = project ? project.name : 'Select a Project';
-    document.querySelectorAll('.project-item-chat').forEach(item => {
-        item.classList.toggle('active', item.dataset.projectId === projectId);
-    });
-    DOM.chatMessages.innerHTML = '<div class="loader">Loading messages...</div>';
-    appState.listeners.chat = listenToProjectChat(projectId, (messages) => {
-        renderChatMessages(messages);
-    });
-}
-
-function renderProjectList() {
-    if (!DOM.projectList) return;
-    DOM.projectList.innerHTML = '';
-    appState.projects.forEach(project => {
-        const listItem = document.createElement('div');
-        listItem.className = `project-item-chat ${appState.selectedProjectId === project.id ? 'active' : ''}`;
-        listItem.dataset.projectId = project.id;
-        listItem.innerHTML = `<span class="project-icon">#</span><span>${project.name}</span>`;
-        DOM.projectList.appendChild(listItem);
-    });
-}
-
-function renderTeamList() {
-    if (!DOM.teamList) return;
-    DOM.teamList.innerHTML = '';
-    appState.team.forEach(member => {
-        const item = document.createElement('li');
-        const isOnline = member.online;
-        item.className = 'team-member-item';
-        item.innerHTML = `<img src="${member.avatarURL || `https://placehold.co/36x36/E9ECEF/495057?text=${member.nickname.charAt(0).toUpperCase()}`}" alt="${member.nickname}" class="avatar-img"><span style="font-weight: 500;">${member.nickname}</span>`;
-        DOM.teamList.appendChild(item);
-    });
-}
-
-function renderChatMessages(messages) {
-    DOM.chatMessages.innerHTML = '';
-    if (messages.length === 0) {
-        DOM.chatMessages.innerHTML = '<div class="loader">Start the conversation!</div>';
-        return;
-    }
-    messages.forEach(message => {
-        const isSelf = message.author.uid === appState.user.uid;
-        const messageEl = document.createElement('div');
-        messageEl.className = `chat-message-full ${isSelf ? 'is-self' : ''}`;
-        const avatarSrc = message.author.avatarURL || `https://placehold.co/40x40/E9ECEF/495057?text=${message.author.nickname.charAt(0).toUpperCase()}`;
-        const timestamp = message.createdAt ? message.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-        messageEl.innerHTML = `<img src="${avatarSrc}" alt="${message.author.nickname}" class="chat-avatar"><div class="chat-message-content"><div class="chat-message-header"><span class="chat-author">${message.author.nickname}</span><span class="chat-timestamp">${timestamp}</span></div><div class="chat-text">${message.text}</div></div>`;
-        DOM.chatMessages.appendChild(messageEl);
-    });
-    DOM.chatMessages.scrollTop = DOM.chatMessages.scrollHeight;
-}
-
-async function handleSendMessage(e) {
-    e.preventDefault();
-    const text = DOM.chatInput.value.trim();
-    if (!text || !appState.selectedProjectId) return;
-    const author = { uid: appState.user.uid, nickname: appState.profile.nickname, avatarURL: appState.profile.avatarURL || null };
-    try {
-        await addChatMessage(appState.selectedProjectId, author, text);
-        DOM.chatInput.value = '';
-    } catch (error) {
-        console.error("Error sending message:", error);
-        showToast("Failed to send message.", "error");
-    }
 }
