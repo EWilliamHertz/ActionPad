@@ -1,9 +1,9 @@
 // FILE: js/firebase-config.js
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
-import { getDatabase } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
-import { getStorage } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getDatabase } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getStorage } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
 // Restored the original firebaseConfig from your repository.
 const firebaseConfig = {
@@ -25,4 +25,4 @@ const storage = getStorage(app);
 // This prevents the warning and initialization errors, which were breaking the login.
 // const rtdb = getDatabase(app); 
 
-export { auth, db, storage };
+export { auth, db, storage, app };
