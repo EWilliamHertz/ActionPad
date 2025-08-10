@@ -5,7 +5,7 @@ import {
     sendEmailVerification as firebaseSendEmailVerification,
     sendPasswordResetEmail as firebaseSendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { setDoc, doc } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { setDoc, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 import { usersCollection } from './firestore.js';
 import { createNewCompany, joinCompanyWithReferralId } from './company.js';
 
@@ -57,4 +57,26 @@ export const updateUserPassword = async (currentPassword, newPassword) => {
     const credential = EmailAuthProvider.credential(user.email, currentPassword);
     await reauthenticateWithCredential(user, credential);
     await updatePassword(user, newPassword);
+};
+
+export const deleteUserAccount = async (password) => {
+    const user = auth.currentUser;
+    if (!user) {
+        throw new Error("No user is currently logged in.");
+    }
+
+    // Re-authenticate the user with their current password for security
+    const credential = EmailAuthProvider.credential(user.email, password);
+    await reauthenticateWithCredential(user, credential);
+
+    // After successful re-authentication, delete the user's Firestore document
+    await deleteDoc(doc(usersCollection, user.uid));
+
+    // Finally, delete the user's Firebase account
+    await user.delete();
+
+    // Note: To fully clean up all data (tasks, comments, attachments, etc.),
+    // a Cloud Function or other server-side process would be ideal.
+    // This client-side implementation deletes the user's record but
+    // leaves orphaned data, which is a known limitation.
 };
