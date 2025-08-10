@@ -207,7 +207,6 @@ async function handleJoinVoiceRoom(roomName) {
                 stopAudioMonitoring(remoteId);
             }
         });
-        // After rendering, start local audio monitoring
         const localAvatarIndicator = document.querySelector(`.voice-room-item[data-room-name="${roomName}"] .voice-room-members [data-uid="${appState.user.uid}"] .speaking-indicator`);
         monitorAudioLevel(appState.localStream, appState.user.uid, localAvatarIndicator);
     });
@@ -323,7 +322,9 @@ async function handleSignalingMessage(data) {
             await pc.setLocalDescription(answer);
             const { uniqueId } = appState.currentVoiceRoom;
             const signalingRef = collection(db, 'voice_rooms', uniqueId, 'signaling');
-            await addDoc(signalingRef, { from: appState.user.uid, to: remoteId, answer: answer.toJSON() });
+            // FIX: The 'answer' object from createAnswer() is already a plain object.
+            // Do not call .toJSON() on it.
+            await addDoc(signalingRef, { from: appState.user.uid, to: remoteId, answer: answer });
         } else if (data.answer) {
             if (pc.signalingState !== 'stable') {
                 await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
