@@ -28,6 +28,7 @@ export const renderTeamList = (team, currentUserId) => {
         }
 
         const statusClass = user.online ? 'online' : 'offline';
+        // FIX: Use the last_changed timestamp from Firestore to get accurate status.
         const statusText = user.online ? 'Online' : formatLastSeen(user.last_changed);
         const avatarSrc = user.avatarURL || `https://placehold.co/36x36/E9ECEF/495057?text=${user.nickname.charAt(0).toUpperCase()}`;
 
