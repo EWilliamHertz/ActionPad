@@ -1,14 +1,14 @@
+// FILE: js/auth.js
 // --- Import initialized Firebase services and SDK functions ---
 import { auth, db } from './firebase-config.js';
-import { 
-    signInWithEmailAndPassword, 
-    createUserWithEmailAndPassword, 
+import {
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
     onAuthStateChanged,
     sendEmailVerification,
-    sendPasswordResetEmail,
-    signOut as firebaseSignOut
+    sendPasswordResetEmail
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { doc, setDoc, getDoc, writeBatch, collection, query, where, getDocs, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { doc, setDoc, getDoc, writeBatch, collection, query, where, getDocs, serverTimestamp, arrayUnion } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 // --- Import your UI and utility modules ---
 import { showToast } from './toast.js';
@@ -18,64 +18,62 @@ import { validateForm, setupLiveValidation } from './validation.js';
 
 // --- Main Setup ---
 document.addEventListener('DOMContentLoaded', () => {
-    // Centralized DOM element selection
-    const pageElements = {
-        loginForm: document.getElementById('login-form'),
-        registerForm: document.getElementById('register-form'),
-        forgotPasswordLink: document.getElementById('forgot-password-link'),
-        forgotPasswordModal: document.getElementById('forgot-password-modal'),
-        forgotPasswordForm: document.getElementById('forgot-password-form'),
-        emailVerificationNotice: document.getElementById('email-verification-notice'),
-        passwordStrengthIndicator: document.getElementById('password-strength')
-    };
+    initializeI18n();
 
-    // This listener handles redirection for already logged-in users
+    // This listener handles redirection for ALREADY logged-in users visiting auth pages.
     onAuthStateChanged(auth, user => {
-        // Redirect to the main app if the user is logged in, verified, and not already there.
-        // NOTE: The original code redirected to index.html, which might be your main app page.
-        // If your main app is dashboard.html, you can change this.
-        if (user && user.emailVerified && !window.location.pathname.includes('dashboard.html')) {
-            window.location.replace('dashboard.html');
+        if (user && user.emailVerified) {
+            // If user is on login/register page but is logged in, redirect them away.
+            if (window.location.pathname.includes('login.html') || window.location.pathname.includes('register.html')) {
+                 window.location.replace('index.html');
+            }
         }
     });
 
-    initializeI18n();
-    setupFormHandlers(pageElements);
+    setupFormHandlers();
 });
 
 
 // --- Form Handlers Setup ---
-function setupFormHandlers(elements) {
-    if (elements.loginForm) {
-        setupLiveValidation(elements.loginForm);
-        elements.loginForm.addEventListener('submit', (e) => handleLogin(e, elements));
-        elements.forgotPasswordLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            elements.forgotPasswordModal.classList.remove('hidden');
-        });
-        elements.forgotPasswordModal.querySelector('.modal-close').addEventListener('click', () => {
-            elements.forgotPasswordModal.classList.add('hidden');
-        });
-        elements.forgotPasswordForm.addEventListener('submit', (e) => handleForgotPassword(e, elements));
+function setupFormHandlers() {
+    const loginForm = document.getElementById('login-form');
+    const registerForm = document.getElementById('register-form');
+    const forgotPasswordLink = document.getElementById('forgot-password-link');
+    const forgotPasswordModal = document.getElementById('forgot-password-modal');
+    const forgotPasswordForm = document.getElementById('forgot-password-form');
+
+    if (loginForm) {
+        setupLiveValidation(loginForm);
+        loginForm.addEventListener('submit', handleLogin);
+        if (forgotPasswordLink) {
+             forgotPasswordLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                forgotPasswordModal.classList.remove('hidden');
+            });
+        }
+        if (forgotPasswordModal) {
+            forgotPasswordModal.querySelector('.modal-close').addEventListener('click', () => {
+                forgotPasswordModal.classList.add('hidden');
+            });
+        }
+       if(forgotPasswordForm) {
+            forgotPasswordForm.addEventListener('submit', handleForgotPassword);
+       }
     }
 
-    if (elements.registerForm) {
-        setupLiveValidation(elements.registerForm);
-        elements.registerForm.addEventListener('submit', (e) => handleRegistration(e));
-        const passwordInput = elements.registerForm.querySelector('#register-password');
-        if (passwordInput && elements.passwordStrengthIndicator) {
-            passwordInput.addEventListener('input', () => checkPasswordStrength(passwordInput, elements.passwordStrengthIndicator));
-        }
-        setupReferralId(elements.registerForm);
+    if (registerForm) {
+        setupLiveValidation(registerForm);
+        registerForm.addEventListener('submit', handleRegistration);
+        setupReferralId(registerForm);
     }
 }
 
 
 // --- Logic Functions ---
 
-async function handleLogin(event, elements) {
+async function handleLogin(event) {
     event.preventDefault();
-    const { loginForm, emailVerificationNotice } = elements;
+    const loginForm = event.target;
     if (!validateForm(loginForm)) return;
 
     const email = loginForm.querySelector('#login-email').value;
@@ -85,18 +83,43 @@ async function handleLogin(event, elements) {
 
     try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        if (!userCredential.user.emailVerified) {
-            await handleUnverifiedUser(userCredential.user, emailVerificationNotice);
+        const user = userCredential.user;
+
+        if (!user.emailVerified) {
+            // Handle unverified user right on the login page
+            const noticeDiv = document.getElementById('email-verification-notice');
+            await handleUnverifiedUser(user, noticeDiv);
+            submitButton.disabled = false; // Re-enable button
+            return;
         }
-        // Successful login redirect is handled by the onAuthStateChanged listener
+
+        // ---- THE FIX: Post-login logic ----
+        // 1. Fetch user profile from Firestore
+        const userProfileSnap = await getDoc(doc(db, 'users', user.uid));
+        if (!userProfileSnap.exists()) {
+            throw new Error("User profile does not exist.");
+        }
+        const userProfile = userProfileSnap.data();
+
+        // 2. Find their first company
+        const firstCompanyId = userProfile.companies?.[0]?.companyId;
+        if (!firstCompanyId) {
+            // If they have no companies, send them to the dashboard to create/join one.
+            window.location.replace('dashboard.html');
+            return;
+        }
+
+        // 3. Set the selected company in localStorage and go to the main app
+        localStorage.setItem('selectedCompanyId', firstCompanyId);
+        window.location.replace('index.html');
+
     } catch (error) {
-        console.error("Login failed:", error.code);
+        console.error("Login failed:", error);
         showToast(getTranslatedString('invalidCredentials'), 'error');
-        if (emailVerificationNotice) emailVerificationNotice.classList.add('hidden');
-    } finally {
         submitButton.disabled = false;
     }
 }
+
 
 async function handleRegistration(event) {
     event.preventDefault();
@@ -118,67 +141,61 @@ async function handleRegistration(event) {
     };
 
     try {
-        // --- Inlined logic from services/auth.js ---
         const userCredential = await createUserWithEmailAndPassword(auth, userData.email, userData.password);
         const user = userCredential.user;
-
-        const batch = writeBatch(db);
-        const userRef = doc(db, 'users', user.uid);
-        const userProfile = {
-            uid: user.uid,
-            email: userData.email,
-            fullName: userData.fullName,
-            nickname: userData.nickname,
-            avatarURL: '',
-            createdAt: serverTimestamp()
-        };
-
         let companyId;
+        let finalRole;
+        const batch = writeBatch(db);
+
         if (userData.referralId) {
-            // Joining an existing company
+            finalRole = 'Member';
             const companiesRef = collection(db, "companies");
             const q = query(companiesRef, where("referralId", "==", userData.referralId));
             const querySnapshot = await getDocs(q);
-            if (querySnapshot.empty) {
-                throw new Error("Invalid Referral ID. Company not found.");
-            }
+            if (querySnapshot.empty) throw new Error("Invalid Referral ID.");
             const companyDoc = querySnapshot.docs[0];
             companyId = companyDoc.id;
+            batch.update(companyDoc.ref, { members: arrayUnion(user.uid) });
         } else {
-            // Creating a new company
+            finalRole = 'Admin';
             const companyRef = doc(collection(db, 'companies'));
             companyId = companyRef.id;
             batch.set(companyRef, {
                 name: userData.companyName,
                 ownerId: user.uid,
+                members: [user.uid],
                 createdAt: serverTimestamp(),
                 referralId: `ref-${companyId.substring(0, 6)}`
             });
         }
+        
+        const userRef = doc(db, 'users', user.uid);
+        batch.set(userRef, {
+            uid: user.uid,
+            email: userData.email,
+            fullName: userData.fullName,
+            nickname: userData.nickname,
+            avatarURL: '',
+            createdAt: serverTimestamp(),
+            companies: [{ companyId, role: finalRole }],
+            companyIds: [companyId]
+        });
 
-        userProfile.companyId = companyId;
-        userProfile.companyRole = userData.referralId ? 'Member' : 'Owner';
-        batch.set(userRef, userProfile);
         await batch.commit();
         await sendEmailVerification(user);
-        // --- End of inlined logic ---
 
+        // Show success message instead of redirecting
         const authBox = document.querySelector('.auth-box');
         authBox.innerHTML = `
             <h2 style="text-align: center;">Registration Successful!</h2>
             <p style="text-align: center;">We've sent a verification link to <strong>${userData.email}</strong>.</p>
-            <p style="text-align: center;">Please check your inbox and click the link to activate your account.</p>
+            <p style="text-align: center;">Please check your inbox to activate your account, then you can log in.</p>
             <a href="login.html" class="success-button">Go to Login Page</a>
         `;
+
     } catch (error) {
         console.error("Registration Error:", error);
-        let message = getTranslatedString('genericError');
-        if (error.code === 'auth/email-already-in-use') {
-            message = getTranslatedString('emailInUse');
-        } else if (error.message.includes("Invalid Referral ID")) {
-            message = "Invalid Referral ID. The company could not be found.";
-        }
-        showToast(message, 'error');
+        showToast(error.message || 'An unknown error occurred.', 'error');
         submitButton.disabled = false;
         submitButton.textContent = 'Register & Join';
     }
@@ -187,46 +204,21 @@ async function handleRegistration(event) {
 async function handleUnverifiedUser(user, noticeDiv) {
     if (!noticeDiv) return;
     noticeDiv.innerHTML = `
-        <p>Please verify your email.</p>
-        <p>A verification link was sent to ${user.email}.</p>
-        <button id="resend-verification-btn">Resend Verification Email</button>
+        <p>Your email is not verified. A new verification link has been sent to ${user.email}.</p>
+        <p>Please check your inbox (and spam folder).</p>
     `;
     noticeDiv.classList.remove('hidden');
-
-    const resendButton = noticeDiv.querySelector('#resend-verification-btn');
-    resendButton.addEventListener('click', async () => {
-        resendButton.disabled = true;
-        try {
-            await sendEmailVerification(user);
-            showToast('A new verification email has been sent.', 'success');
-            let countdown = 60;
-            resendButton.textContent = `Sent! Try again in ${countdown}s`;
-            const interval = setInterval(() => {
-                countdown--;
-                resendButton.textContent = `Sent! Try again in ${countdown}s`;
-                if (countdown <= 0) {
-                    clearInterval(interval);
-                    resendButton.textContent = 'Resend Verification Email';
-                    resendButton.disabled = false;
-                }
-            }, 1000);
-        } catch (err) {
-            showToast('Failed to send email. Please try again later.', 'error');
-            resendButton.disabled = false;
-        }
-    });
+    await sendEmailVerification(user); // Send email automatically
 }
 
-async function handleForgotPassword(event, elements) {
+async function handleForgotPassword(event) {
     event.preventDefault();
-    const { forgotPasswordForm, forgotPasswordModal } = elements;
-    const email = forgotPasswordForm.querySelector('#reset-email').value;
+    const email = document.getElementById('reset-email').value;
     try {
         await sendPasswordResetEmail(auth, email);
         showToast('Password reset link sent! Check your email.', 'success');
-        forgotPasswordModal.classList.add('hidden');
+        document.getElementById('forgot-password-modal').classList.add('hidden');
     } catch (error) {
-        console.error("Password reset failed:", error.code);
         showToast('Could not send reset email. Please check the address.', 'error');
     }
 }
@@ -235,45 +227,9 @@ function setupReferralId(form) {
     const urlParams = new URLSearchParams(window.location.search);
     const refId = urlParams.get('ref');
     if (refId) {
-        const companyNameInput = form.querySelector('#register-companyname');
-        const companyRoleInput = form.querySelector('#register-companyrole');
         form.querySelector('#register-referralid').value = refId;
-        if(companyNameInput) {
-            companyNameInput.disabled = true;
-            companyNameInput.value = "Joining existing company...";
-        }
-        if(companyRoleInput){
-            companyRoleInput.value = "Member";
-            companyRoleInput.disabled = true;
-        }
-    }
-}
-
-function checkPasswordStrength(passwordInput, strengthIndicator) {
-    const password = passwordInput.value;
-    let strength = 0;
-    if (password.length >= 8) strength++;
-    if (password.match(/[a-z]/) && password.match(/[A-Z]/)) strength++;
-    if (password.match(/[0-9]/)) strength++;
-    if (password.match(/[^a-zA-Z0-9]/)) strength++;
-
-    if (!strengthIndicator) return;
-    strengthIndicator.className = 'password-strength-indicator';
-    const strengthText = strengthIndicator.querySelector('.strength-text');
-
-    if (password.length === 0) {
-        if(strengthText) strengthText.textContent = '';
-        return;
-    }
-
-    if (strength < 2) {
-        strengthIndicator.classList.add('weak');
-        if(strengthText) strengthText.textContent = 'Weak';
-    } else if (strength < 4) {
-        strengthIndicator.classList.add('medium');
-        if(strengthText) strengthText.textContent = 'Medium';
-    } else {
-        strengthIndicator.classList.add('strong');
-        if(strengthText) strengthText.textContent = 'Strong';
+        form.querySelector('#register-companyname').disabled = true;
+        form.querySelector('#register-companyname').value = "Joining existing company...";
+        form.querySelector('#register-companyrole').value = "Member";
     }
 }
