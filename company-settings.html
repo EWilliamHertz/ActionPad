@@ -16,6 +16,16 @@
         </header>
 
         <main class="settings-main">
+            <!-- NEW: Section for Company Profile and Logo Upload -->
+            <div class="settings-card">
+                <h2>Company Profile</h2>
+                <div class="avatar-upload-container">
+                    <img id="company-logo-preview" src="https://placehold.co/100x100/E9ECEF/495057?text=Logo" alt="Company Logo">
+                    <input type="file" id="logo-upload-input" accept="image/png, image/jpeg" class="hidden">
+                    <button type="button" id="logo-upload-button">Change Company Logo</button>
+                </div>
+            </div>
+
             <div class="settings-card">
                 <h2>Manage Team Members</h2>
                 <p>Set roles for each member of your team. Admins can manage settings and user roles, Members can create and edit tasks, and Viewers can only see tasks.</p>
@@ -23,7 +33,7 @@
                     <div class="loader">Loading members...</div>
                 </div>
                 <div class="settings-actions">
-                    <button id="save-roles-button" class="btn-primary">Save Changes</button>
+                    <button id="save-roles-button" class="btn-primary">Save Role Changes</button>
                 </div>
             </div>
         </main>
