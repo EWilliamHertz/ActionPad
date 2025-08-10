@@ -34,6 +34,7 @@ const DOM = {
     chatHeader: document.getElementById('chat-header'),
     addProjectForm: document.getElementById('add-project-form-chat'),
     newProjectInput: document.getElementById('new-project-input-chat'),
+    voiceRoomList: document.getElementById('voice-room-list'),
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -118,6 +119,12 @@ function setupUIEvents() {
 
     DOM.chatForm.addEventListener('submit', handleSendMessage);
     DOM.addProjectForm.addEventListener('submit', handleAddProject);
+    DOM.voiceRoomList.addEventListener('click', (e) => {
+        const item = e.target.closest('.voice-room-item');
+        if (item) {
+            handleJoinVoiceRoom(item.dataset.roomName);
+        }
+    });
 }
 
 function switchProject(projectId) {
@@ -270,4 +277,16 @@ async function handleAddProject(e) {
         console.error("Error adding project/chat room:", error);
         showToast("Failed to create new chat room.", 'error');
     }
+}
+
+function handleJoinVoiceRoom(roomName) {
+    showToast(`Attempting to join voice room: ${roomName}...`, 'info');
+    console.log(`VOIP: User ${appState.user.uid} is attempting to join voice room: ${roomName}`);
+    // This is where the complex WebRTC logic would be implemented.
+    // 1. Get user's media stream (microphone) using navigator.mediaDevices.getUserMedia().
+    // 2. Connect to a signaling server (e.g., using WebSockets) to exchange connection info.
+    // 3. Create an RTCPeerConnection and add the media stream to it.
+    // 4. Handle ICE candidates and SDP offers/answers.
+    // 5. When a connection is established, render the remote user's audio stream.
+    console.log("VOIP: This is a placeholder. A full WebRTC implementation requires a signaling server and STUN/TURN servers.");
 }
