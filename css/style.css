@@ -558,3 +558,134 @@ main { padding: 2rem; overflow-y: auto; }
 .voice-room-members.hidden {
     display: none;
 }
+
+/* --- Styles for Task Filter/Sort Controls --- */
+.task-controls { display: flex; gap: 1.5rem; margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); }
+.task-controls .form-group { margin: 0; }
+.task-controls .form-group label { font-size: 0.8rem; text-transform: uppercase; color: var(--subtle-text-color); }
+.task-controls select { background-color: var(--surface-color); }
+
+/* NEW: Styles for Company Logo on Dashboard Card */
+.company-card-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+.company-logo-small {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    object-fit: cover;
+    background-color: var(--background-color);
+}
+
+/* NEW: Styles for "My Tasks" Widget */
+.my-tasks-widget {
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+    padding-top: 1rem;
+}
+.my-tasks-widget ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.my-tasks-widget li a {
+    display: block;
+    padding: 0.5rem 1rem;
+    text-decoration: none;
+    color: var(--text-color);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.my-tasks-widget li a:hover {
+    background-color: var(--background-color);
+}
+.my-tasks-widget li .priority-dot {
+    margin-right: 0.5rem;
+}
+
+/* NEW: Styles for Calendar View */
+#calendar-view {
+    display: flex;
+    flex-direction: column;
+}
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+.calendar-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+.calendar-header button {
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    cursor: pointer;
+    font-size: 1.5rem;
+    color: var(--subtle-text-color);
+}
+#calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+}
+.calendar-day-header {
+    text-align: center;
+    font-weight: 600;
+    color: var(--subtle-text-color);
+    padding-bottom: 0.5rem;
+}
+.calendar-day {
+    background-color: var(--surface-color);
+    border: 1px solid var(--border-color);
+    min-height: 120px;
+    padding: 0.5rem;
+    font-size: 0.9rem;
+    display: flex;
+    flex-direction: column;
+}
+.calendar-day.prev-month, .calendar-day.next-month {
+    background-color: #f8f9fa;
+    color: #ced4da;
+}
+.calendar-day.today span {
+    background-color: var(--primary-color);
+    color: white;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.calendar-tasks {
+    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.calendar-task-item {
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    color: white;
+}
+.calendar-task-item.priority-high { background-color: var(--priority-high); }
+.calendar-task-item.priority-medium { background-color: var(--priority-medium); color: var(--text-color); }
+.calendar-task-item.priority-low { background-color: var(--priority-low); }
