@@ -1,17 +1,16 @@
-// FILE: js/services/company.js
 import { collection, addDoc, doc, getDoc, getDocs, query, where, serverTimestamp, arrayUnion, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 import { db, storage } from '../firebase-config.js';
-import { usersCollection } from './firestore.js';
 import { listenToCompanyPresence as originalListen } from './presence.js';
 
-const getCompaniesCollection = () => collection(db, 'companies');
+// Create direct references to collections
+const companiesCol = collection(db, 'companies');
+const usersCol = collection(db, 'users');
 
-export const getCompany = (companyId) => getDoc(doc(getCompaniesCollection(), companyId));
+export const getCompany = (companyId) => getDoc(doc(companiesCol, companyId));
 
 export const createNewCompany = async (user, companyName, userRole) => {
-    // FIX: Add ownerId and the initial members array to the new company document.
-    const newCompanyRef = await addDoc(getCompaniesCollection(), {
+    const newCompanyRef = await addDoc(companiesCol, {
         name: companyName,
         ownerId: user.uid,
         members: [user.uid],
@@ -19,7 +18,7 @@ export const createNewCompany = async (user, companyName, userRole) => {
         createdAt: serverTimestamp()
     });
     const companyId = newCompanyRef.id;
-    const userRef = doc(usersCollection(), user.uid);
+    const userRef = doc(usersCol, user.uid);
 
     await updateDoc(userRef, {
         companies: arrayUnion({
@@ -32,7 +31,7 @@ export const createNewCompany = async (user, companyName, userRole) => {
 };
 
 export const joinCompanyWithReferralId = async (user, referralId, role) => {
-    const q = query(getCompaniesCollection(), where("referralId", "==", Number(referralId)));
+    const q = query(companiesCol, where("referralId", "==", Number(referralId)));
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
@@ -41,9 +40,8 @@ export const joinCompanyWithReferralId = async (user, referralId, role) => {
 
     const companyDoc = querySnapshot.docs[0];
     const companyId = companyDoc.id;
-    const userRef = doc(usersCollection(), user.uid);
+    const userRef = doc(usersCol, user.uid);
 
-    // FIX: Add the new member to the company's 'members' array.
     await updateDoc(companyDoc.ref, {
         members: arrayUnion(user.uid)
     });
@@ -59,7 +57,7 @@ export const joinCompanyWithReferralId = async (user, referralId, role) => {
 };
 
 export const updateUserRole = async (companyId, userId, newRole) => {
-    const userRef = doc(usersCollection(), userId);
+    const userRef = doc(usersCol, userId);
     const userSnap = await getDoc(userRef);
 
     if (userSnap.exists()) {
@@ -77,10 +75,8 @@ export const updateUserRole = async (companyId, userId, newRole) => {
     }
 };
 
-// NEW: Function to update company data (e.g., for logo URL)
-export const updateCompany = (companyId, data) => updateDoc(doc(db, 'companies', companyId), data);
+export const updateCompany = (companyId, data) => updateDoc(doc(companiesCol, companyId), data);
 
-// NEW: Function to upload a company logo to Firebase Storage
 export const uploadCompanyLogo = async (companyId, file) => {
     const filePath = `company_logos/${companyId}/${file.name}`;
     const fileRef = storageRef(storage, filePath);
@@ -88,6 +84,4 @@ export const uploadCompanyLogo = async (companyId, file) => {
     return getDownloadURL(fileRef);
 };
 
-
-// Re-exporting this function so it can be accessed via services/company.js
 export const listenToCompanyPresence = originalListen;
