@@ -1,5 +1,4 @@
-// FILE: js/taskController.js
-import { db, storage } from './firebase-config.js'; // Direct import from firebase-config
+import { db } from './firebase-config.js';
 import {
     addDoc,
     collection,
@@ -9,28 +8,19 @@ import {
     getDoc,
     serverTimestamp,
     arrayUnion
-} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js'; // Direct import of Firestore functions
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { showToast } from './toast.js';
-// Keep safe service imports that don't cause a dependency cycle
 import { createNotification } from './services/notification.js';
 import { addComment, logActivity } from './services/comment.js';
 import { generateSubtasksAI } from './services/ai.js';
-import { uploadTaskAttachment } from './services/attachment.js';
+import { uploadTaskAttachment, deleteAttachment as serviceDeleteAttachment } from './services/attachment.js';
 
 let appState = null;
 
-/**
- * Initializes the task controller with the global application state.
- * @param {Object} state - The main application state object.
- */
 export const initTaskController = (state) => {
     appState = state;
 };
 
-/**
- * Sets up the event listener for the 'add project' form.
- * @param {Object} state - The main application state object.
- */
 export const setupProjectForm = (state) => {
     const form = document.getElementById('add-project-form');
     form.addEventListener('submit', (e) => {
@@ -43,7 +33,6 @@ export const setupProjectForm = (state) => {
                 companyId: state.company.id,
                 createdAt: serverTimestamp()
             };
-            // FIX: Direct SDK call instead of firebaseService.addProject
             addDoc(collection(db, 'projects'), projectData)
                 .then(() => {
                     input.value = '';
@@ -57,9 +46,6 @@ export const setupProjectForm = (state) => {
     });
 };
 
-/**
- * Sets up the event listener for the 'add task' form.
- */
 export const setupTaskForm = () => {
     document.getElementById('add-task-form').addEventListener('submit', (e) => {
         e.preventDefault();
@@ -71,16 +57,11 @@ export const setupTaskForm = () => {
     });
 };
 
-/**
- * Handles the logic for adding a new task.
- * @param {string} text - The raw text from the task input field.
- */
 const handleAddTask = (text) => {
     const taskData = parseTaskInput(text);
     taskData.projectId = appState.currentProjectId === 'all' ? null : appState.currentProjectId;
     const author = { uid: appState.user.uid, nickname: appState.profile.nickname };
 
-    // FIX: Add all required fields directly
     const fullTaskData = {
         ...taskData,
         companyId: appState.company.id,
@@ -94,7 +75,6 @@ const handleAddTask = (text) => {
         updatedAt: serverTimestamp()
     };
 
-    // FIX: Direct SDK call instead of firebaseService.addTask
     addDoc(collection(db, 'tasks'), fullTaskData)
         .then((docRef) => {
             const activityText = `${author.nickname} created this task.`;
@@ -107,16 +87,13 @@ const handleAddTask = (text) => {
         });
 };
 
-/**
- * Handles the submission of the edit task form.
- */
 export const handleEditTask = async () => {
     const taskId = document.getElementById('edit-task-id').value;
     if (!taskId) return showToast("Error: No task ID found.", "error");
 
     try {
         const taskRef = doc(db, 'tasks', taskId);
-        const taskSnap = await getDoc(taskRef); // FIX: Direct SDK call
+        const taskSnap = await getDoc(taskRef);
         if (!taskSnap.exists()) {
             return showToast("Task not found. It may have been deleted.", "error");
         }
@@ -132,7 +109,7 @@ export const handleEditTask = async () => {
             status: document.getElementById('edit-task-status').value,
             projectId: document.getElementById('edit-task-project').value,
             assignedTo: newAssignees,
-            updatedAt: serverTimestamp() // Add timestamp on update
+            updatedAt: serverTimestamp()
         };
 
         newAssignees.forEach(userId => {
@@ -144,28 +121,21 @@ export const handleEditTask = async () => {
             }
         });
 
-        await updateDoc(taskRef, updatedData); // FIX: Direct SDK call
+        await updateDoc(taskRef, updatedData);
         showToast('Task updated successfully!', 'success');
 
     } catch (err) {
         console.error("An error occurred in handleEditTask:", err);
         showToast(`Update failed: ${err.message}`, 'error');
-        throw err; // Re-throw for modal manager to handle
+        throw err;
     }
 };
 
-/**
- * Toggles a task's status.
- */
 export const toggleTaskStatus = (taskId, isDone) => {
     updateTaskStatus(taskId, isDone ? 'done' : 'todo');
 };
 
-/**
- * Updates the status of a task.
- */
 export const updateTaskStatus = (taskId, newStatus) => {
-    // FIX: Direct SDK call
     updateDoc(doc(db, 'tasks', taskId), { status: newStatus, updatedAt: serverTimestamp() })
         .catch(err => {
             console.error("Error updating task status:", err);
@@ -173,14 +143,10 @@ export const updateTaskStatus = (taskId, newStatus) => {
         });
 };
 
-/**
- * Deletes a task after user confirmation.
- */
 export const deleteTask = (taskId) => {
     const task = appState.tasks.find(t => t.id === taskId);
     const taskName = task ? task.name : 'this task';
     if (confirm(`Are you sure you want to delete the task: "${taskName}"?`)) {
-        // FIX: Direct SDK call
         deleteDoc(doc(db, 'tasks', taskId))
             .then(() => showToast('Task deleted.', 'success'))
             .catch(err => {
@@ -189,30 +155,26 @@ export const deleteTask = (taskId) => {
     }
 };
 
-// --- Subtask, Comment, and Attachment Functions ---
-// These functions call other services, which is fine, or are updated to call the SDK directly.
-
 export const addSubtask = (taskId, text) => {
     const newSubtask = { text, isCompleted: false };
-    // FIX: Direct SDK call
     updateDoc(doc(db, 'tasks', taskId), { subtasks: arrayUnion(newSubtask) });
 };
 
 export const toggleSubtask = async (taskId, subtaskIndex, isCompleted) => {
-    const taskSnap = await getDoc(doc(db, 'tasks', taskId));
+    const taskRef = doc(db, 'tasks', taskId);
+    const taskSnap = await getDoc(taskRef);
     if (!taskSnap.exists()) return;
     const updatedSubtasks = [...taskSnap.data().subtasks];
     updatedSubtasks[subtaskIndex].isCompleted = isCompleted;
-    // FIX: Direct SDK call
-    updateDoc(doc(db, 'tasks', taskId), { subtasks: updatedSubtasks });
+    updateDoc(taskRef, { subtasks: updatedSubtasks });
 };
 
 export const deleteSubtask = async (taskId, subtaskIndex) => {
-    const taskSnap = await getDoc(doc(db, 'tasks', taskId));
+    const taskRef = doc(db, 'tasks', taskId);
+    const taskSnap = await getDoc(taskRef);
     if (!taskSnap.exists()) return;
     const updatedSubtasks = taskSnap.data().subtasks.filter((_, index) => index !== subtaskIndex);
-    // FIX: Direct SDK call
-    updateDoc(doc(db, 'tasks', taskId), { subtasks: updatedSubtasks });
+    updateDoc(taskRef, { subtasks: updatedSubtasks });
 };
 
 export const handleAttachmentUpload = async (e) => {
@@ -229,12 +191,35 @@ export const handleAttachmentUpload = async (e) => {
     e.target.value = '';
 };
 
-// Re-exporting these is fine as they don't create a circular dependency.
-export { addComment, generateSubtasksAI };
+export const deleteAttachment = (taskId, attachment) => {
+    return serviceDeleteAttachment(taskId, attachment);
+};
 
-/**
- * Parses raw text input to extract task details like priority and due date.
- */
+export const generateSubtasksWithAI = async () => {
+    const taskId = document.getElementById('edit-task-id').value;
+    const taskName = document.getElementById('edit-task-name').value;
+    const taskDescription = document.getElementById('edit-task-description').value;
+    const btn = document.getElementById('ai-subtask-btn');
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+
+    try {
+        const subtasks = await generateSubtasksAI(taskName, taskDescription);
+        if (subtasks && subtasks.length > 0) {
+            const taskRef = doc(db, 'tasks', taskId);
+            await updateDoc(taskRef, { subtasks: arrayUnion(...subtasks) });
+            showToast('AI subtasks added!', 'success');
+        } else {
+            showToast('AI could not generate subtasks.', 'error');
+        }
+    } catch (error) {
+        showToast('Failed to generate AI subtasks.', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Generate Subtasks with AI ✨';
+    }
+};
+
 const parseTaskInput = (text) => {
     let taskName = text;
     let priority = 'medium';
