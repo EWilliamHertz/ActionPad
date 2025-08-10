@@ -16,7 +16,7 @@ import {
     getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
-// Import services
+// Import services directly
 import { initializeI18n } from './i18n.js';
 import * as UImanager from './ui/uiManager.js';
 import * as taskController from './taskController.js';
@@ -61,7 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function initialize(companyId) {
     try {
-        const profileSnap = await getUserProfile(companyId);
+        // Corrected: getUserProfile takes the user's UID, not the companyId
+        const profileSnap = await getUserProfile(appState.user.uid);
         if (!profileSnap.exists()) throw new Error("User profile not found.");
 
         const fullProfile = profileSnap.data();
