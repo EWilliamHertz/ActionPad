@@ -1,28 +1,11 @@
 // FILE: js/auth.js
-import { auth, db } from './firebase-config.js';
-import {
-    signInWithEmailAndPassword,
-    createUserWithEmailAndPassword,
-    onAuthStateChanged,
-    sendEmailVerification,
-    sendPasswordResetEmail,
-    signOut as firebaseSignOut
-} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import {
-    doc,
-    setDoc,
-    getDoc,
-    writeBatch,
-    collection,
-    query,
-    where,
-    getDocs,
-    serverTimestamp,
-    arrayUnion
-} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { auth } from './firebase-config.js';
+import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { showToast } from './toast.js';
 import { initializeI18n, getTranslatedString } from './i18n.js';
 import { validateForm, setupLiveValidation } from './validation.js';
+// Import the service functions we created
+import { signIn, registerUser, sendPasswordReset } from './services/auth.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     initializeI18n();
@@ -31,12 +14,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // This listener handles redirection for ALREADY logged-in users.
     onAuthStateChanged(auth, user => {
         if (user && user.emailVerified) {
-            // If user is on an auth page but is already logged in, they should not be here.
-            // Check localStorage to see if a company is selected.
             if (localStorage.getItem('selectedCompanyId')) {
                 window.location.replace('index.html');
             } else {
-                // If no company is selected, they need to go to the dashboard to choose one.
                 window.location.replace('dashboard.html');
             }
         }
@@ -49,12 +29,14 @@ function setupFormHandlers() {
         setupLiveValidation(loginForm);
         loginForm.addEventListener('submit', handleLogin);
     }
+
     const registerForm = document.getElementById('register-form');
     if (registerForm) {
         setupLiveValidation(registerForm);
         registerForm.addEventListener('submit', handleRegistration);
         setupReferralId(registerForm);
     }
+
     const forgotPasswordLink = document.getElementById('forgot-password-link');
     if (forgotPasswordLink) {
         forgotPasswordLink.addEventListener('click', (e) => {
@@ -62,6 +44,12 @@ function setupFormHandlers() {
             document.getElementById('forgot-password-modal').classList.remove('hidden');
         });
     }
+    
+    const forgotPasswordForm = document.getElementById('forgot-password-form');
+    if(forgotPasswordForm) {
+        forgotPasswordForm.addEventListener('submit', handlePasswordReset);
+    }
+
     document.querySelectorAll('.modal-close').forEach(btn => {
         btn.addEventListener('click', () => btn.closest('.modal-overlay').classList.add('hidden'));
     });
@@ -78,27 +66,18 @@ async function handleLogin(event) {
     submitButton.disabled = true;
 
     try {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        // Use the signIn service function
+        const userCredential = await signIn(email, password);
         const user = userCredential.user;
 
         if (!user.emailVerified) {
-            document.getElementById('email-verification-notice').classList.remove('hidden');
+            const notice = document.getElementById('email-verification-notice');
+            notice.textContent = `A verification email was sent to ${user.email}. Please verify your email before logging in.`;
+            notice.classList.remove('hidden');
             submitButton.disabled = false;
             return;
         }
-
-        const userProfileSnap = await getDoc(doc(db, 'users', user.uid));
-        if (!userProfileSnap.exists()) throw new Error("User profile not found.");
-        
-        const userProfile = userProfileSnap.data();
-        const firstCompanyId = userProfile.companies?.[0]?.companyId;
-
-        if (firstCompanyId) {
-            localStorage.setItem('selectedCompanyId', firstCompanyId);
-            window.location.replace('index.html');
-        } else {
-            window.location.replace('dashboard.html');
-        }
+        // On successful login, the onAuthStateChanged listener will handle redirection.
     } catch (error) {
         showToast(getTranslatedString('invalidCredentials'), 'error');
         submitButton.disabled = false;
@@ -123,42 +102,32 @@ async function handleRegistration(event) {
     };
 
     try {
-        const userCredential = await createUserWithEmailAndPassword(auth, userData.email, userData.password);
-        const user = userCredential.user;
-        const batch = writeBatch(db);
-        let companyId;
-        let finalRole = userData.companyRole;
+        // Use the registerUser service function
+        await registerUser(userData);
+        document.querySelector('.auth-box').innerHTML = `<h2>Registration Successful!</h2><p>A verification link has been sent to <strong>${userData.email}</strong>. Please check your inbox and verify your account before logging in.</p>`;
+    } catch (error) {
+        const message = error.code === 'auth/email-already-in-use' 
+            ? getTranslatedString('emailInUse') 
+            : error.message;
+        showToast(message, 'error');
+        submitButton.disabled = false;
+    }
+}
 
-        if (userData.referralId) {
-            finalRole = 'Member';
-            const q = query(collection(db, "companies"), where("referralId", "==", Number(userData.referralId)));
-            const querySnapshot = await getDocs(q);
-            if (querySnapshot.empty) throw new Error("Invalid Referral ID.");
-            const companyDoc = querySnapshot.docs[0];
-            companyId = companyDoc.id;
-            batch.update(companyDoc.ref, { members: arrayUnion(user.uid) });
-        } else {
-            finalRole = 'Admin';
-            const companyRef = doc(collection(db, 'companies'));
-            companyId = companyRef.id;
-            batch.set(companyRef, {
-                name: userData.companyName, ownerId: user.uid, members: [user.uid],
-                referralId: Math.floor(100000 + Math.random() * 900000), createdAt: serverTimestamp()
-            });
-        }
-        
-        batch.set(doc(db, 'users', user.uid), {
-            uid: user.uid, email: userData.email, fullName: userData.fullName, nickname: userData.nickname,
-            avatarURL: '', createdAt: serverTimestamp(),
-            companies: [{ companyId, role: finalRole }], companyIds: [companyId]
-        });
+async function handlePasswordReset(event) {
+    event.preventDefault();
+    const form = event.target;
+    const email = form.querySelector('#reset-email').value;
+    const submitButton = form.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
 
-        await batch.commit();
-        await sendEmailVerification(user);
-
-        document.querySelector('.auth-box').innerHTML = `<h2>Registration Successful!</h2><p>A verification link has been sent to <strong>${userData.email}</strong>. Please check your inbox.</p>`;
+    try {
+        await sendPasswordReset(email);
+        showToast(`Password reset link sent to ${email}`, 'success');
+        form.closest('.modal-overlay').classList.add('hidden');
     } catch (error) {
         showToast(error.message, 'error');
+    } finally {
         submitButton.disabled = false;
     }
 }
@@ -166,8 +135,11 @@ async function handleRegistration(event) {
 function setupReferralId(form) {
     const refId = new URLSearchParams(window.location.search).get('ref');
     if (refId) {
-        form.querySelector('#register-referralid').value = refId;
-        form.querySelector('#register-companyname').disabled = true;
-        form.querySelector('#register-companyname').value = "Joining existing company...";
+        const referralInput = form.querySelector('#register-referralid');
+        const companyNameInput = form.querySelector('#register-companyname');
+        
+        referralInput.value = refId;
+        companyNameInput.disabled = true;
+        companyNameInput.value = "Joining existing company...";
     }
 }
