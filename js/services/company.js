@@ -8,6 +8,7 @@ const companiesCollection = collection(db, 'companies');
 export const getCompany = (companyId) => getDoc(doc(companiesCollection, companyId));
 
 export const createNewCompany = async (user, companyName, userRole) => {
+    // Create the new company document
     const newCompanyRef = await addDoc(companiesCollection, {
         name: companyName,
         referralId: Math.floor(100000 + Math.random() * 900000),
@@ -16,6 +17,7 @@ export const createNewCompany = async (user, companyName, userRole) => {
     const companyId = newCompanyRef.id;
     const userRef = doc(usersCollection, user.uid);
 
+    // Atomically add the new company and role to the user's 'companies' array
     await updateDoc(userRef, {
         companies: arrayUnion({
             companyId: companyId,
@@ -38,6 +40,7 @@ export const joinCompanyWithReferralId = async (user, referralId, role) => {
     const companyId = companyDoc.id;
     const userRef = doc(usersCollection, user.uid);
 
+    // Atomically add the new company and role to the user's 'companies' array
     await updateDoc(userRef, {
         companies: arrayUnion({
             companyId: companyId,
