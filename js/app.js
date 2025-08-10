@@ -21,6 +21,11 @@ import * as taskController from './taskController.js';
 import { initCommandPalette } from './ui/commandPalette.js';
 import { showToast } from './toast.js';
 
+console.log("App.js loaded, checking imports...");
+console.log("Auth:", auth);
+console.log("DB:", db);
+console.log("Storage:", storage);
+
 const appState = {
     user: null, profile: null, company: null, team: [], projects: [], tasks: [],
     notifications: [],
@@ -53,18 +58,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function initialize(companyId) {
     try {
+        console.log("Starting initialization with companyId:", companyId);
+        
         const profileSnap = await getDoc(doc(db, 'users', appState.user.uid));
         if (!profileSnap.exists()) throw new Error("User profile not found.");
+        console.log("Profile loaded successfully");
 
         const fullProfile = profileSnap.data();
         const companyMembership = fullProfile.companies.find(c => c.companyId === companyId);
         
         // Safety check: if stored company is invalid, go back to dashboard
         if (!companyMembership) {
+            console.log("Company membership not found, redirecting to dashboard");
             localStorage.removeItem('selectedCompanyId');
             window.location.replace('dashboard.html');
             return;
         }
+        console.log("Company membership found:", companyMembership);
 
         appState.profile = {
             uid: appState.user.uid,
@@ -75,16 +85,21 @@ async function initialize(companyId) {
         const companySnap = await getDoc(doc(db, 'companies', companyId));
         if (!companySnap.exists()) throw new Error("Company data not found.");
         appState.company = { id: companySnap.id, ...companySnap.data() };
+        console.log("Company data loaded:", appState.company);
 
+        console.log("Initializing controllers and UI...");
         taskController.initTaskController(appState);
         UImanager.initUIManager(appState);
         UImanager.initModalManager(appState);
         initCommandPalette(appState, { openModal: UImanager.openModal, switchProject });
 
+        console.log("Setting up UI and listeners...");
         setupUI();
         setupListeners();
 
+        console.log("Making app container visible...");
         document.getElementById('app-container').classList.remove('hidden');
+        console.log("Initialization completed successfully!");
 
     } catch (error) {
         console.error("CRITICAL INITIALIZATION FAILURE:", error);
@@ -95,30 +110,44 @@ async function initialize(companyId) {
 }
 
 function setupListeners() {
+    console.log("Setting up Firebase listeners...");
+    console.log("DB object in setupListeners:", db);
     if (appState.projectsListener) appState.projectsListener();
     if (appState.presenceListener) appState.presenceListener();
 
+    console.log("Creating projects query for company:", appState.company.id);
+    console.log("About to call collection(db, 'projects') with db:", db);
     const projectsQuery = query(collection(db, 'projects'), where("companyId", "==", appState.company.id));
     appState.projectsListener = onSnapshot(projectsQuery, (snapshot) => {
+        console.log("Projects snapshot received, docs count:", snapshot.docs.length);
         appState.projects = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         UImanager.renderProjectList(appState.projects, appState.currentProjectId);
         if (appState.currentProjectId !== 'all') {
             const updatedProject = appState.projects.find(p => p.id === appState.currentProjectId);
             if (updatedProject) UImanager.updateProjectHeader(updatedProject);
         }
+    }, (error) => {
+        console.error("Projects listener error:", error);
     });
 
+    console.log("Creating users query for company:", appState.company.id);
+    console.log("About to call collection(db, 'users') with db:", db);
     const usersQuery = query(collection(db, 'users'), where("companyIds", "array-contains", appState.company.id));
     appState.presenceListener = onSnapshot(usersQuery, (snapshot) => {
+        console.log("Users snapshot received, docs count:", snapshot.docs.length);
         appState.team = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         UImanager.renderTeamList(appState.team, appState.user.uid);
         populateAssigneeFilter(appState.team);
+    }, (error) => {
+        console.error("Users listener error:", error);
     });
 
+    console.log("Switching to project 'all'...");
     switchProject('all');
 }
 
 function switchProject(projectId) {
+    console.log("Switching to project:", projectId);
     appState.currentProjectId = projectId;
     if (appState.tasksListener) appState.tasksListener();
 
@@ -130,13 +159,17 @@ function switchProject(projectId) {
         if (project) UImanager.updateProjectHeader(project);
     }
 
+    console.log("Creating tasks query for company:", appState.company.id, "project:", projectId);
     let tasksQuery;
     const baseTasksQuery = query(collection(db, 'tasks'), where("companyId", "==", appState.company.id));
     tasksQuery = (projectId === 'all') ? baseTasksQuery : query(baseTasksQuery, where("projectId", "==", projectId));
     
     appState.tasksListener = onSnapshot(tasksQuery, (snapshot) => {
+        console.log("Tasks snapshot received, docs count:", snapshot.docs.length);
         appState.tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         renderFilteredTasks();
+    }, (error) => {
+        console.error("Tasks listener error:", error);
     });
 }
 
