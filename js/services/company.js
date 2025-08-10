@@ -1,5 +1,6 @@
 import { collection, addDoc, doc, getDoc, getDocs, query, where, serverTimestamp, arrayUnion, updateDoc } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
-import { db } from '../firebase-config.js';
+import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js";
+import { db, storage } from '../firebase-config.js';
 import { usersCollection } from './firestore.js';
 import { listenToCompanyPresence as originalListen } from './presence.js';
 
@@ -8,7 +9,6 @@ const companiesCollection = collection(db, 'companies');
 export const getCompany = (companyId) => getDoc(doc(companiesCollection, companyId));
 
 export const createNewCompany = async (user, companyName, userRole) => {
-    // Create the new company document
     const newCompanyRef = await addDoc(companiesCollection, {
         name: companyName,
         referralId: Math.floor(100000 + Math.random() * 900000),
@@ -17,7 +17,6 @@ export const createNewCompany = async (user, companyName, userRole) => {
     const companyId = newCompanyRef.id;
     const userRef = doc(usersCollection, user.uid);
 
-    // Atomically add the new company and role to the user's 'companies' array
     await updateDoc(userRef, {
         companies: arrayUnion({
             companyId: companyId,
@@ -40,7 +39,6 @@ export const joinCompanyWithReferralId = async (user, referralId, role) => {
     const companyId = companyDoc.id;
     const userRef = doc(usersCollection, user.uid);
 
-    // Atomically add the new company and role to the user's 'companies' array
     await updateDoc(userRef, {
         companies: arrayUnion({
             companyId: companyId,
@@ -69,6 +67,18 @@ export const updateUserRole = async (companyId, userId, newRole) => {
         throw new Error("User not found.");
     }
 };
+
+// NEW: Function to update company data (e.g., for logo URL)
+export const updateCompany = (companyId, data) => updateDoc(doc(db, 'companies', companyId), data);
+
+// NEW: Function to upload a company logo to Firebase Storage
+export const uploadCompanyLogo = async (companyId, file) => {
+    const filePath = `company_logos/${companyId}/${file.name}`;
+    const fileRef = storageRef(storage, filePath);
+    await uploadBytes(fileRef, file);
+    return getDownloadURL(fileRef);
+};
+
 
 // Re-exporting this function so it can be accessed via services/company.js
 export const listenToCompanyPresence = originalListen;
