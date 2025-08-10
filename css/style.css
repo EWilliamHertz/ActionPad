@@ -689,3 +689,42 @@ main { padding: 2rem; overflow-y: auto; }
 .calendar-task-item.priority-high { background-color: var(--priority-high); }
 .calendar-task-item.priority-medium { background-color: var(--priority-medium); color: var(--text-color); }
 .calendar-task-item.priority-low { background-color: var(--priority-low); }
+
+/* NEW: Styles for the speaking indicator */
+.avatar-small {
+    position: relative;
+}
+
+.speaking-indicator {
+    position: absolute;
+    top: -3px;
+    left: -3px;
+    right: -3px;
+    bottom: -3px;
+    border-radius: 50%;
+    border: 2px solid var(--online-color);
+    box-shadow: 0 0 5px var(--online-color);
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+    animation: pulse-animation 1.5s infinite;
+    pointer-events: none; /* Make sure it doesn't block clicks */
+}
+
+.avatar-small .speaking-indicator.speaking {
+    opacity: 1;
+}
+
+@keyframes pulse-animation {
+    0% {
+        transform: scale(1);
+        opacity: 0.7;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 0.7;
+    }
+}
