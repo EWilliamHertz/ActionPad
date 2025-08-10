@@ -8,6 +8,7 @@ import { listenToCompanyTasks } from './services/task.js';
 import { listenToCompanyProjects, uploadProjectLogo, updateProject } from './services/project.js';
 import { manageUserPresence, listenToCompanyPresence } from './services/presence.js';
 import { listenToNotifications, markNotificationsAsRead } from './services/notification.js';
+import { listenToProjectChat, addChatMessage } from './services/chat.js';
 
 import { initializeI18n, setLanguage } from './i18n.js';
 import * as UImanager from './ui/uiManager.js';
@@ -24,7 +25,9 @@ const appState = {
     tasksListener: null,
     projectsListener: null,
     presenceListener: null,
+    chatListener: null,
     notificationsListener: null,
+    sidebarChatListener: null,
 };
 
 // Make appState globally accessible for the command palette
@@ -134,7 +137,7 @@ function setupListeners() {
     appState.notificationsListener = listenToNotifications(appState.user.uid, (notifications) => {
         appState.notifications = notifications;
     });
-
+    
     switchProject('all');
 }
 
@@ -253,7 +256,7 @@ function setupUI() {
     document.getElementById('hamburger-menu').addEventListener('click', () => {
         document.getElementById('sidebar').classList.toggle('open');
     });
-
+    
     taskController.setupProjectForm(appState);
     taskController.setupTaskForm();
     UImanager.setupModals();
