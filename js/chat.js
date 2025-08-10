@@ -21,6 +21,8 @@ let appState = {
     teamListener: null,
     chatListener: null,
     tasksListener: null,
+    // New state for voice chat
+    localStream: null,
 };
 
 const DOM = {
@@ -120,9 +122,14 @@ function setupUIEvents() {
     DOM.chatForm.addEventListener('submit', handleSendMessage);
     DOM.addProjectForm.addEventListener('submit', handleAddProject);
     DOM.voiceRoomList.addEventListener('click', (e) => {
-        const item = e.target.closest('.voice-room-item');
-        if (item) {
-            handleJoinVoiceRoom(item.dataset.roomName);
+        const joinBtn = e.target.closest('.join-voice-room-btn');
+        if (joinBtn) {
+            const roomName = joinBtn.closest('.voice-room-item').dataset.roomName;
+            if (joinBtn.classList.contains('active')) {
+                handleLeaveVoiceRoom(roomName, joinBtn);
+            } else {
+                handleJoinVoiceRoom(roomName, joinBtn);
+            }
         }
     });
 }
@@ -279,14 +286,73 @@ async function handleAddProject(e) {
     }
 }
 
-function handleJoinVoiceRoom(roomName) {
+/**
+ * Handles joining a voice room. This is a placeholder for WebRTC logic.
+ * @param {string} roomName The name of the voice room to join.
+ * @param {HTMLElement} button The button element that was clicked.
+ */
+async function handleJoinVoiceRoom(roomName, button) {
     showToast(`Attempting to join voice room: ${roomName}...`, 'info');
     console.log(`VOIP: User ${appState.user.uid} is attempting to join voice room: ${roomName}`);
-    // This is where the complex WebRTC logic would be implemented.
-    // 1. Get user's media stream (microphone) using navigator.mediaDevices.getUserMedia().
-    // 2. Connect to a signaling server (e.g., using WebSockets) to exchange connection info.
-    // 3. Create an RTCPeerConnection and add the media stream to it.
-    // 4. Handle ICE candidates and SDP offers/answers.
-    // 5. When a connection is established, render the remote user's audio stream.
-    console.log("VOIP: This is a placeholder. A full WebRTC implementation requires a signaling server and STUN/TURN servers.");
+    
+    try {
+        // Request access to the user's microphone.
+        // This is the only part of WebRTC that can be demonstrated without a signaling server.
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        appState.localStream = stream; // Store the stream for future use (e.g., leaving the room).
+
+        // Update the UI to show the user is in the room.
+        button.textContent = 'Leave';
+        button.classList.add('active');
+        button.style.backgroundColor = 'var(--priority-high)';
+        showToast(`Joined voice room: ${roomName}!`, 'success');
+
+        /*
+         * --- Placeholder for full WebRTC implementation ---
+         *
+         * The following steps would be needed to make this a multi-user, functional voice chat:
+         *
+         * 1.  **Connect to a Signaling Server**: Establish a WebSocket connection to a server that can relay messages between users.
+         * Example: `const signalingChannel = new WebSocket('wss://your-signaling-server.com');`
+         *
+         * 2.  **Create an RTCPeerConnection**: For each peer you want to connect to, you'd create a new RTCPeerConnection.
+         * Example: `const peerConnection = new RTCPeerConnection(rtcConfiguration);`
+         *
+         * 3.  **Add your local stream**: Add the stream you just obtained to the peer connection.
+         * Example: `stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));`
+         *
+         * 4.  **Handle SDP Offers and Answers**: Use the signaling server to exchange session descriptions (SDP offers and answers) to negotiate the connection.
+         *
+         * 5.  **Handle ICE Candidates**: Exchange network information (ICE candidates) through the signaling server to help peers find the best way to connect.
+         *
+         * 6.  **Handle Remote Streams**: Listen for the `track` event on the `RTCPeerConnection` to receive and play the audio from the remote user.
+         * Example: `peerConnection.ontrack = (event) => { new Audio().srcObject = event.streams[0]; };`
+         */
+    } catch (err) {
+        console.error("Failed to get audio stream:", err);
+        showToast("Microphone access denied. Please allow access to join.", "error");
+        // Reset the button state if access is denied.
+        button.textContent = 'Join';
+        button.classList.remove('active');
+        button.style.backgroundColor = 'var(--primary-color)';
+    }
+}
+
+/**
+ * Handles leaving a voice room.
+ * @param {string} roomName The name of the voice room to leave.
+ * @param {HTMLElement} button The button element that was clicked.
+ */
+function handleLeaveVoiceRoom(roomName, button) {
+    if (appState.localStream) {
+        // Stop all tracks in the local stream to release the microphone.
+        appState.localStream.getTracks().forEach(track => track.stop());
+        appState.localStream = null;
+        showToast(`Left voice room: ${roomName}`, 'success');
+    }
+
+    // Reset the button and UI state.
+    button.textContent = 'Join';
+    button.classList.remove('active');
+    button.style.backgroundColor = 'var(--primary-color)';
 }
