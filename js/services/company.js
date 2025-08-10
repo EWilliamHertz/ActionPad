@@ -1,3 +1,4 @@
+// FILE: js/services/company.js
 import { collection, addDoc, doc, getDoc, getDocs, query, where, serverTimestamp, arrayUnion, updateDoc } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js";
 import { db, storage } from '../firebase-config.js';
@@ -9,8 +10,11 @@ const companiesCollection = collection(db, 'companies');
 export const getCompany = (companyId) => getDoc(doc(companiesCollection, companyId));
 
 export const createNewCompany = async (user, companyName, userRole) => {
+    // FIX: Add ownerId and the initial members array to the new company document.
     const newCompanyRef = await addDoc(companiesCollection, {
         name: companyName,
+        ownerId: user.uid,
+        members: [user.uid],
         referralId: Math.floor(100000 + Math.random() * 900000),
         createdAt: serverTimestamp()
     });
@@ -38,6 +42,11 @@ export const joinCompanyWithReferralId = async (user, referralId, role) => {
     const companyDoc = querySnapshot.docs[0];
     const companyId = companyDoc.id;
     const userRef = doc(usersCollection, user.uid);
+
+    // FIX: Add the new member to the company's 'members' array.
+    await updateDoc(companyDoc.ref, {
+        members: arrayUnion(user.uid)
+    });
 
     await updateDoc(userRef, {
         companies: arrayUnion({
