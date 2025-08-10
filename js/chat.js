@@ -1,8 +1,9 @@
-// --- Import necessary Firebase services and the configuration ---
-import { firebaseConfig } from './firebase-config.js';
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, doc, collection, onSnapshot, updateDoc, arrayUnion, arrayRemove, setDoc, getDoc, deleteDoc, serverTimestamp, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+// FILE: js/chat.js
+
+// --- Import necessary Firebase services and the ALREADY INITIALIZED instances ---
+import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFirestore, doc, collection, onSnapshot, updateDoc, arrayUnion, arrayRemove, setDoc, getDoc, deleteDoc, serverTimestamp, writeBatch, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { db, auth } from './firebase-config.js'; // Correctly import initialized instances
 
 // --- Import your existing services ---
 import { signOut } from './services/auth.js';
@@ -12,13 +13,6 @@ import { listenToCompanyProjects } from './services/project.js';
 import { listenToCompanyPresence } from './services/presence.js';
 import { listenToProjectChat, addChatMessage } from './services/chat.js';
 import { showToast } from './toast.js';
-
-// --- Initialize Firebase and get instances ---
-// This is the core of the fix. We ensure db and auth are ready right away.
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-
 
 // --- STATE MANAGEMENT ---
 let appState = {
@@ -62,7 +56,6 @@ const rtcConfiguration = {
 
 // --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
-    // onAuthStateChanged now uses the 'auth' instance we created above.
     onAuthStateChanged(auth, async user => {
         if (user) {
             appState.user = user;
@@ -99,18 +92,26 @@ async function initialize() {
 }
 
 function setupListeners() {
+    // Detach any existing listeners to prevent duplicates
+    if (appState.listeners.projects) appState.listeners.projects();
+    if (appState.listeners.team) appState.listeners.team();
+    if (appState.listeners.voiceRooms) appState.listeners.voiceRooms();
+
+
     appState.listeners.projects = listenToCompanyProjects(appState.company.id, (projects) => {
         appState.projects = projects;
         renderProjectList();
-        if (!appState.selectedProjectId && projects.length > 0) switchProject(projects[0].id);
+        // If no project is selected yet, default to the first one
+        if (!appState.selectedProjectId && projects.length > 0) {
+            switchProject(projects[0].id);
+        }
     });
 
     appState.listeners.team = listenToCompanyPresence(appState.company.id, (team) => {
         appState.team = team;
         renderTeamList();
     });
-    
-    // This call is now safe because 'db' is guaranteed to be initialized.
+
     const voiceRoomsCollectionRef = collection(db, 'rooms');
     appState.listeners.voiceRooms = onSnapshot(voiceRoomsCollectionRef, (snapshot) => {
         const allRoomsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -122,17 +123,23 @@ function setupListeners() {
 // --- UI EVENT HANDLERS ---
 function setupUIEvents() {
     document.getElementById('logout-button').addEventListener('click', async () => {
-        await handleLeaveVoiceRoom();
+        await handleLeaveVoiceRoom(); // Gracefully leave voice chat before signing out
         signOut();
     });
+
     DOM.projectList.addEventListener('click', (e) => {
         const item = e.target.closest('.project-item-chat');
-        if (item) switchProject(item.dataset.projectId);
+        if (item && item.dataset.projectId !== appState.selectedProjectId) {
+             switchProject(item.dataset.projectId);
+        }
     });
+
     DOM.chatForm.addEventListener('submit', handleSendMessage);
 
     DOM.voiceRoomList.addEventListener('click', (e) => {
         const joinBtn = e.target.closest('.join-voice-room-btn');
+        const roomMain = e.target.closest('.voice-room-main');
+
         if (joinBtn) {
             e.stopPropagation();
             const roomItem = joinBtn.closest('.voice-room-item');
@@ -142,9 +149,8 @@ function setupUIEvents() {
             } else {
                 handleJoinVoiceRoom(roomName);
             }
-        }
-        const roomMain = e.target.closest('.voice-room-main');
-        if (roomMain) {
+        } else if (roomMain) {
+            // Toggle visibility of member list
             const memberList = roomMain.nextElementSibling;
             if (memberList && memberList.classList.contains('voice-room-members')) {
                 memberList.classList.toggle('hidden');
@@ -153,16 +159,15 @@ function setupUIEvents() {
     });
 }
 
-// --- RENDER FUNCTIONS (Adapted for new structure) ---
+// --- RENDER FUNCTIONS ---
 
 function renderVoiceRooms(allRoomsData) {
     const staticRoomElements = Array.from(DOM.voiceRoomList.querySelectorAll('.voice-room-item'));
-    
+
     staticRoomElements.forEach(roomEl => {
         const roomName = roomEl.dataset.roomName;
         const membersDiv = roomEl.querySelector('.voice-room-members');
-        
-        const roomData = allRoomsData.find(r => r.name === roomName);
+        const roomData = allRoomsData.find(r => r.id === roomName);
 
         if (roomData && roomData.peers) {
             const peerIds = Object.keys(roomData.peers);
@@ -183,7 +188,7 @@ function renderVoiceRooms(allRoomsData) {
 
 
 // =================================================================
-// --- REBUILT VOICE CHAT (WebRTC) LOGIC ---
+// --- VOICE CHAT (WebRTC) LOGIC ---
 // =================================================================
 
 async function handleJoinVoiceRoom(roomName) {
@@ -199,7 +204,7 @@ async function handleJoinVoiceRoom(roomName) {
     appState.currentVoiceRoom = roomName;
     const roomRef = doc(db, 'rooms', roomName);
     const peersCollection = collection(roomRef, 'peers');
-    
+
     const selfRef = doc(peersCollection, appState.user.uid);
     await setDoc(selfRef, {
         id: appState.user.uid,
@@ -208,8 +213,7 @@ async function handleJoinVoiceRoom(roomName) {
     });
 
     appState.voiceRoomUnsubscribe = onSnapshot(peersCollection, (snapshot) => {
-        const currentPeers = snapshot.docs.map(d => d.id);
-        renderVoiceRoomMembers(roomName, currentPeers);
+        renderVoiceRoomMembers(roomName, snapshot.docs.map(d => d.id));
 
         for (const change of snapshot.docChanges()) {
             const peerId = change.doc.id;
@@ -223,7 +227,7 @@ async function handleJoinVoiceRoom(roomName) {
                 removeParticipant(peerId);
             }
         }
-        
+
         const localAvatar = document.querySelector(`#avatar-${appState.user.uid}`);
         if(localAvatar && appState.localStream) {
              setupVoiceActivityDetector(appState.localStream, localAvatar, appState.user.uid);
@@ -245,16 +249,14 @@ async function handleLeaveVoiceRoom() {
         appState.voiceRoomUnsubscribe = null;
     }
 
-    for (const peerId in appState.peerConnections) {
-        appState.peerConnections[peerId].pc.close();
-    }
+    Object.values(appState.peerConnections).forEach(({ pc }) => pc.close());
     appState.peerConnections = {};
 
     if (appState.localStream) {
         appState.localStream.getTracks().forEach(track => track.stop());
         appState.localStream = null;
     }
-    
+
     appState.voiceActivityDetectors.forEach(({ context, animationFrameId }) => {
         cancelAnimationFrame(animationFrameId);
         context.close();
@@ -263,10 +265,10 @@ async function handleLeaveVoiceRoom() {
 
     const selfRef = doc(db, 'rooms', roomName, 'peers', appState.user.uid);
     await deleteDoc(selfRef);
-    
+
     DOM.remoteAudioContainer.innerHTML = '';
     renderVoiceRoomMembers(roomName, []);
-    
+
     showToast(`Left voice room: ${roomName}`, 'info');
     appState.currentVoiceRoom = null;
     updateVoiceRoomUI();
@@ -280,8 +282,22 @@ async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
 
     console.log(`Creating peer connection to ${remoteUserId}`);
     const pc = new RTCPeerConnection(rtcConfiguration);
-    
-    appState.peerConnections[remoteUserId] = { pc, listener: null };
+    const listener = onSnapshot(doc(db, 'rooms', roomId, 'peers', remoteUserId), async (docSnapshot) => {
+        const data = docSnapshot.data();
+        if (data?.answer && pc.signalingState !== "stable") {
+            console.log(`Received answer from ${remoteUserId}.`);
+            await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+        }
+        if (data?.offer && !pc.currentRemoteDescription) {
+            console.log(`Received offer from ${remoteUserId}, creating answer.`);
+            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+            const answerDescription = await pc.createAnswer();
+            await pc.setLocalDescription(answerDescription);
+            await updateDoc(doc(db, 'rooms', roomId, 'peers', appState.user.uid), { answer: { type: answerDescription.type, sdp: answerDescription.sdp }});
+        }
+    });
+
+    appState.peerConnections[remoteUserId] = { pc, listener };
 
     appState.localStream.getTracks().forEach(track => pc.addTrack(track, appState.localStream));
 
@@ -292,58 +308,30 @@ async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
         }
     };
 
-    const roomRef = doc(db, 'rooms', roomId);
-    const localPeerRef = doc(roomRef, 'peers', appState.user.uid);
-    const remotePeerRef = doc(roomRef, 'peers', remoteUserId);
-
-    pc.onicecandidate = event => {
-        if (event.candidate) {
-            addDoc(collection(localPeerRef, 'candidates'), event.candidate.toJSON());
-        }
-    };
-
-    onSnapshot(collection(remotePeerRef, 'candidates'), snapshot => {
+    const candidatesCollection = collection(db, 'rooms', roomId, 'peers', remoteUserId, 'candidates');
+    onSnapshot(candidatesCollection, snapshot => {
         snapshot.docChanges().forEach(async change => {
             if (change.type === 'added') {
-                const candidate = new RTCIceCandidate(change.doc.data());
-                await pc.addIceCandidate(candidate);
+                await pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
             }
         });
     });
 
+    pc.onicecandidate = event => {
+        if (event.candidate) {
+            addDoc(collection(db, 'rooms', roomId, 'peers', appState.user.uid, 'candidates'), event.candidate.toJSON());
+        }
+    };
+
     if (isOffering) {
         const offerDescription = await pc.createOffer();
         await pc.setLocalDescription(offerDescription);
-        const offer = { sdp: offerDescription.sdp, type: offerDescription.type };
-        await updateDoc(localPeerRef, { offer });
+        await updateDoc(doc(db, 'rooms', roomId, 'peers', appState.user.uid), { offer: { sdp: offerDescription.sdp, type: offerDescription.type }});
     }
-
-    appState.peerConnections[remoteUserId].listener = onSnapshot(remotePeerRef, async (doc) => {
-        const data = doc.data();
-        if (!pc.currentRemoteDescription && data?.offer) {
-            console.log(`Received offer from ${remoteUserId}, creating answer.`);
-            const offer = new RTCSessionDescription(data.offer);
-            await pc.setRemoteDescription(offer);
-
-            const answerDescription = await pc.createAnswer();
-            await pc.setLocalDescription(answerDescription);
-
-            const answer = { type: answerDescription.type, sdp: answerDescription.sdp };
-            await updateDoc(localPeerRef, { answer });
-        }
-
-        if (data?.answer) {
-             console.log(`Received answer from ${remoteUserId}.`);
-             const answer = new RTCSessionDescription(data.answer);
-             if (pc.signalingState !== "stable") {
-                await pc.setRemoteDescription(answer);
-             }
-        }
-    });
 }
 
 
-// --- UI & UTILITY FUNCTIONS (Adapted) ---
+// --- UI & UTILITY FUNCTIONS ---
 
 function removeParticipant(peerId) {
     const avatarEl = document.getElementById(`avatar-${peerId}`);
@@ -359,7 +347,6 @@ function removeParticipant(peerId) {
         }
         delete appState.peerConnections[peerId];
     }
-    
     stopVoiceActivityDetector(peerId);
 }
 
@@ -382,7 +369,7 @@ function addRemoteAudio(peerId, stream) {
 function renderVoiceRoomMembers(roomName, peerIds) {
     const roomEl = DOM.voiceRoomList.querySelector(`.voice-room-item[data-room-name="${roomName}"]`);
     if (!roomEl) return;
-    
+
     const membersDiv = roomEl.querySelector('.voice-room-members');
     membersDiv.innerHTML = peerIds.map(uid => {
         const user = appState.team.find(m => m.id === uid);
@@ -406,8 +393,7 @@ function setupVoiceActivityDetector(stream, element, userId) {
     analyser.fftSize = 512;
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
-    
-    const speakingThreshold = 10;
+
     let speakingCooldown = 0;
     let animationFrameId;
 
@@ -418,18 +404,15 @@ function setupVoiceActivityDetector(stream, element, userId) {
         }
 
         analyser.getByteFrequencyData(dataArray);
-        let sum = dataArray.reduce((a, b) => a + b, 0);
-        let average = sum / bufferLength;
+        let average = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
 
-        if (average > speakingThreshold) {
+        if (average > 10) { // Speaking threshold
             element.classList.add('speaking');
             speakingCooldown = 30;
+        } else if (speakingCooldown > 0) {
+            speakingCooldown--;
         } else {
-            if (speakingCooldown > 0) {
-                speakingCooldown--;
-            } else {
-                element.classList.remove('speaking');
-            }
+            element.classList.remove('speaking');
         }
         animationFrameId = requestAnimationFrame(detect);
         appState.voiceActivityDetectors.set(userId, { context: audioContext, animationFrameId });
@@ -463,7 +446,7 @@ function updateVoiceRoomUI() {
 }
 
 
-// --- ORIGINAL CHAT & PROJECT FUNCTIONS (Largely Unchanged) ---
+// --- TEXT CHAT & PROJECT FUNCTIONS ---
 
 function switchProject(projectId) {
     if (appState.listeners.chat) appState.listeners.chat();
@@ -496,9 +479,9 @@ function renderTeamList() {
     DOM.teamList.innerHTML = '';
     appState.team.forEach(member => {
         const item = document.createElement('li');
-        const isOnline = member.online;
         item.className = 'team-member-item';
-        item.innerHTML = `<img src="${member.avatarURL || `https://placehold.co/36x36/E9ECEF/495057?text=${member.nickname.charAt(0).toUpperCase()}`}" alt="${member.nickname}" class="avatar-img"><span style="font-weight: 500;">${member.nickname}</span>`;
+        const avatarSrc = member.avatarURL || `https://placehold.co/36x36/E9ECEF/495057?text=${member.nickname.charAt(0).toUpperCase()}`;
+        item.innerHTML = `<img src="${avatarSrc}" alt="${member.nickname}" class="avatar-img"><span>${member.nickname}</span>`;
         DOM.teamList.appendChild(item);
     });
 }
@@ -515,7 +498,15 @@ function renderChatMessages(messages) {
         messageEl.className = `chat-message-full ${isSelf ? 'is-self' : ''}`;
         const avatarSrc = message.author.avatarURL || `https://placehold.co/40x40/E9ECEF/495057?text=${message.author.nickname.charAt(0).toUpperCase()}`;
         const timestamp = message.createdAt ? message.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-        messageEl.innerHTML = `<img src="${avatarSrc}" alt="${message.author.nickname}" class="chat-avatar"><div class="chat-message-content"><div class="chat-message-header"><span class="chat-author">${message.author.nickname}</span><span class="chat-timestamp">${timestamp}</span></div><div class="chat-text">${message.text}</div></div>`;
+        messageEl.innerHTML = `
+            <img src="${avatarSrc}" alt="${message.author.nickname}" class="chat-avatar">
+            <div class="chat-message-content">
+                <div class="chat-message-header">
+                    <span class="chat-author">${message.author.nickname}</span>
+                    <span class="chat-timestamp">${timestamp}</span>
+                </div>
+                <div class="chat-text">${message.text}</div>
+            </div>`;
         DOM.chatMessages.appendChild(messageEl);
     });
     DOM.chatMessages.scrollTop = DOM.chatMessages.scrollHeight;
@@ -525,7 +516,11 @@ async function handleSendMessage(e) {
     e.preventDefault();
     const text = DOM.chatInput.value.trim();
     if (!text || !appState.selectedProjectId) return;
-    const author = { uid: appState.user.uid, nickname: appState.profile.nickname, avatarURL: appState.profile.avatarURL || null };
+    const author = {
+        uid: appState.user.uid,
+        nickname: appState.profile.nickname,
+        avatarURL: appState.profile.avatarURL || null
+    };
     try {
         await addChatMessage(appState.selectedProjectId, author, text);
         DOM.chatInput.value = '';
