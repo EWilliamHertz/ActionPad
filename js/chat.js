@@ -1,142 +1,249 @@
 // FILE: js/chat.js
-import { auth } from './firebase-config.js';
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+import { auth, db } from './firebase-config.js';
+import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js';
 import { signOut } from './services/auth.js';
 import { getUserProfile } from './services/user.js';
 import { getCompany } from './services/company.js';
-import { listenToCompanyChat, addChatMessage } from './services/chat.js';
-import { formatTime } from './ui/utils.js';
+import { listenToCompanyProjects } from './services/project.js';
+import { listenToCompanyPresence } from './services/presence.js';
+import { listenToProjectChat, addChatMessage } from './services/chat.js';
+import { listenToCompanyTasks } from './services/task.js';
 import { showToast } from './toast.js';
 
 let appState = {
     user: null,
     profile: null,
     company: null,
+    projects: [],
+    team: [],
+    selectedProjectId: null,
+    projectListener: null,
+    teamListener: null,
     chatListener: null,
+    tasksListener: null,
+};
+
+const DOM = {
+    projectList: document.getElementById('project-list'),
+    teamList: document.getElementById('team-list'),
+    chatProjectName: document.getElementById('chat-project-name'),
+    chatMessages: document.getElementById('chat-messages'),
+    chatForm: document.getElementById('chat-form'),
+    chatInput: document.getElementById('chat-input'),
+    pageContainer: document.getElementById('chat-page-container'),
+    chatHeader: document.getElementById('chat-header'),
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-    onAuthStateChanged(auth, async (user) => {
-        if (user && user.emailVerified) {
+    onAuthStateChanged(auth, async user => {
+        if (user) {
             appState.user = user;
-            const companyId = localStorage.getItem('selectedCompanyId');
-            if (companyId) {
-                initialize(companyId);
-            } else {
-                showToast("No company selected. Redirecting to dashboard.", "error");
-                window.location.replace('dashboard.html');
+            try {
+                await initialize();
+                DOM.pageContainer.style.display = 'grid'; // Show the chat UI
+            } catch (error) {
+                console.error("Chat app initialization failed:", error);
+                showToast(error.message, 'error');
+                // Redirect on critical failure
+                setTimeout(() => window.location.replace('index.html'), 3000);
             }
         } else {
+            // User is not signed in, redirect to login
             window.location.replace('login.html');
         }
     });
 });
 
-async function initialize(companyId) {
-    try {
-        const profileSnap = await getUserProfile(appState.user.uid);
-        if (!profileSnap.exists()) throw new Error("User profile not found.");
-        appState.profile = profileSnap.data();
-
-        const companySnap = await getCompany(companyId);
-        if (!companySnap.exists()) throw new Error("Company data not found.");
-        appState.company = { id: companySnap.id, ...companySnap.data() };
-
-        setupUI();
-        setupListeners();
-
-        document.getElementById('chat-page-container').classList.remove('hidden');
-    } catch (error) {
-        console.error("Chat page initialization failed:", error);
-        showToast(error.message, "error");
-        window.location.replace('index.html');
+async function initialize() {
+    // Fetch user profile and company
+    const profileSnap = await getUserProfile(appState.user.uid);
+    if (!profileSnap.exists()) {
+        throw new Error("User profile not found.");
     }
-}
+    appState.profile = { uid: appState.user.uid, ...profileSnap.data() };
 
-function setupUI() {
-    // User info in header
-    document.getElementById('user-nickname').textContent = appState.profile.nickname;
-    const avatar = document.getElementById('user-avatar-header');
-    if (appState.profile.avatarURL) {
-        avatar.src = appState.profile.avatarURL;
-    } else {
-        avatar.src = `https://placehold.co/40x40/E9ECEF/495057?text=${appState.profile.nickname.charAt(0).toUpperCase()}`;
+    const companyId = localStorage.getItem('selectedCompanyId');
+    if (!companyId) {
+        throw new Error("No company selected. Please return to the dashboard.");
     }
+    const companySnap = await getCompany(companyId);
+    if (!companySnap.exists()) {
+        throw new Error("Company not found.");
+    }
+    appState.company = { id: companySnap.id, ...companySnap.data() };
 
-    // Company name in header
-    document.getElementById('chat-company-name').textContent = appState.company.name;
-    
-    // Logout button
-    document.getElementById('logout-button').addEventListener('click', signOut);
+    // Setup listeners for projects and team
+    setupListeners();
 
-    // Message form
-    document.getElementById('full-chat-form').addEventListener('submit', handleSendMessage);
+    // Setup event listeners for UI
+    setupUIEvents();
 }
 
 function setupListeners() {
-    if (appState.chatListener) appState.chatListener(); // Unsubscribe from old listener
+    if (appState.projectListener) appState.projectListener();
+    if (appState.teamListener) appState.teamListener();
 
-    appState.chatListener = listenToCompanyChat(appState.company.id, (messages) => {
-        renderMessages(messages);
-    });
-}
-
-function renderMessages(messages) {
-    const chatContainer = document.getElementById('full-chat-messages');
-    if (!chatContainer) return;
-
-    chatContainer.innerHTML = ''; // Clear previous messages
-
-    if (messages.length === 0) {
-        chatContainer.innerHTML = `<div class="empty-state"><p>No messages yet. Start the conversation!</p></div>`;
-        return;
-    }
-
-    messages.forEach(msg => {
-        const item = document.createElement('div');
-        const isSelf = msg.author.uid === appState.user.uid;
-        item.className = `chat-message-full ${isSelf ? 'is-self' : ''}`;
-        
-        const author = msg.author?.nickname || 'User';
-        const timestamp = msg.createdAt ? formatTime(msg.createdAt) : '';
-        const avatarSrc = msg.author?.avatarURL || `https://placehold.co/40x40/E9ECEF/495057?text=${author.charAt(0).toUpperCase()}`;
-
-        item.innerHTML = `
-            <img src="${avatarSrc}" alt="${author}" class="avatar chat-avatar">
-            <div class="chat-message-content">
-                <div class="chat-message-header">
-                    <span class="chat-author">${author}</span>
-                    <span class="chat-timestamp">${timestamp}</span>
-                </div>
-                <div class="chat-text">${msg.text}</div>
-            </div>
-        `;
-        chatContainer.appendChild(item);
-    });
-
-    // Auto-scroll to the latest message
-    chatContainer.scrollTop = chatContainer.scrollHeight;
-}
-
-async function handleSendMessage(event) {
-    event.preventDefault();
-    const input = document.getElementById('full-chat-input');
-    const text = input.value.trim();
-
-    if (text) {
-        const author = {
-            uid: appState.user.uid,
-            nickname: appState.profile.nickname,
-            avatarURL: appState.profile.avatarURL || null
-        };
-        
-        input.value = ''; // Clear input immediately for better UX
-        try {
-            await addChatMessage(appState.company.id, author, text);
-        } catch (err) {
-            console.error("Error sending chat message:", err);
-            showToast("Could not send message.", "error");
-            input.value = text; // Restore text if sending failed
+    appState.projectListener = listenToCompanyProjects(appState.company.id, (projects) => {
+        appState.projects = projects;
+        renderProjectList();
+        // Automatically select the first project if none is selected
+        if (!appState.selectedProjectId && projects.length > 0) {
+            switchProject(projects[0].id);
         }
+    });
+
+    appState.teamListener = listenToCompanyPresence(appState.company.id, (team) => {
+        appState.team = team;
+        renderTeamList();
+    });
+}
+
+function setupUIEvents() {
+    DOM.projectList.addEventListener('click', (e) => {
+        const item = e.target.closest('.project-item');
+        if (item) {
+            const projectId = item.dataset.projectId;
+            if (projectId !== appState.selectedProjectId) {
+                switchProject(projectId);
+            }
+        }
+    });
+
+    DOM.chatForm.addEventListener('submit', handleSendMessage);
+}
+
+function switchProject(projectId) {
+    if (appState.chatListener) appState.chatListener();
+    if (appState.tasksListener) appState.tasksListener();
+
+    appState.selectedProjectId = projectId;
+    const project = appState.projects.find(p => p.id === projectId);
+    
+    // Update the project name in the chat header
+    DOM.chatProjectName.textContent = project ? project.name : 'General';
+    
+    // Update active state in sidebar
+    document.querySelectorAll('.project-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.projectId === projectId);
+    });
+
+    // Clear previous chat messages and show loader
+    DOM.chatMessages.innerHTML = '<div class="loader-container">Loading...</div>';
+
+    // Fetch and render initial tasks
+    appState.tasksListener = listenToCompanyTasks(appState.company.id, projectId, (tasks) => {
+        renderChatContent(tasks, appState.messages);
+    });
+    
+    // Fetch and render real-time chat messages
+    appState.chatListener = listenToProjectChat(projectId, (messages) => {
+        appState.messages = messages;
+        renderChatContent(appState.tasks, messages);
+    });
+}
+
+function renderChatContent(tasks, messages) {
+    DOM.chatMessages.innerHTML = '';
+    const sortedContent = [...tasks.map(t => ({...t, type: 'task'})), ...messages.map(m => ({...m, type: 'message'}))]
+        .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+
+    sortedContent.forEach(item => {
+        if (item.type === 'task') {
+            renderTaskMessage(item);
+        } else {
+            renderChatMessage(item);
+        }
+    });
+
+    // Auto-scroll to the bottom
+    DOM.chatMessages.scrollTop = DOM.chatMessages.scrollHeight;
+}
+
+function renderProjectList() {
+    if (!DOM.projectList) return;
+    DOM.projectList.innerHTML = ''; // Clear existing list
+    appState.projects.forEach(project => {
+        const listItem = document.createElement('li');
+        listItem.innerHTML = `
+            <button class="project-item" data-project-id="${project.id}">
+                <span class="project-icon">#</span>
+                <span>${project.name}</span>
+            </button>
+        `;
+        DOM.projectList.appendChild(listItem);
+    });
+}
+
+function renderTeamList() {
+    if (!DOM.teamList) return;
+    DOM.teamList.innerHTML = '';
+    appState.team.forEach(member => {
+        const item = document.createElement('li');
+        const isOnline = member.online;
+        item.className = 'team-member-item';
+        item.innerHTML = `
+            <img src="${member.avatarURL || `https://placehold.co/36x36/E9ECEF/495057?text=${member.nickname.charAt(0).toUpperCase()}`}" alt="${member.nickname}" class="avatar-img">
+            <span class="presence-dot ${isOnline ? 'online' : 'offline'}"></span>
+            <span>${member.nickname}</span>
+        `;
+        DOM.teamList.appendChild(item);
+    });
+}
+
+function renderChatMessage(message) {
+    const isSelf = message.author.uid === appState.user.uid;
+    const messageEl = document.createElement('div');
+    messageEl.className = `chat-message ${isSelf ? 'is-self' : ''}`;
+    const avatarSrc = message.author.avatarURL || `https://placehold.co/40x40/E9ECEF/495057?text=${message.author.nickname.charAt(0).toUpperCase()}`;
+    const timestamp = message.createdAt ? message.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
+
+    messageEl.innerHTML = `
+        <img src="${avatarSrc}" alt="${message.author.nickname}" class="chat-avatar">
+        <div class="chat-message-content">
+            <div class="chat-message-header">
+                <span class="chat-author">${message.author.nickname}</span>
+                <span class="chat-timestamp">${timestamp}</span>
+            </div>
+            <div class="chat-text">${message.text}</div>
+        </div>
+    `;
+    DOM.chatMessages.appendChild(messageEl);
+}
+
+function renderTaskMessage(task) {
+    const taskEl = document.createElement('div');
+    taskEl.className = `task-message ${task.status === 'done' ? 'done' : ''}`;
+    taskEl.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" class="task-status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            ${task.status === 'done' ? 
+                `<polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>` : 
+                `<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>`
+            }
+        </svg>
+        <div>
+            <h4>${task.name}</h4>
+            <p>Assigned to: ${task.assignedTo.map(uid => appState.team.find(u => u.id === uid)?.nickname || 'Unknown').join(', ')}</p>
+        </div>
+    `;
+    DOM.chatMessages.appendChild(taskEl);
+}
+
+async function handleSendMessage(e) {
+    e.preventDefault();
+    const text = DOM.chatInput.value.trim();
+    if (!text || !appState.selectedProjectId) return;
+
+    const author = {
+        uid: appState.user.uid,
+        nickname: appState.profile.nickname,
+        avatarURL: appState.profile.avatarURL || null,
+    };
+
+    try {
+        await addChatMessage(appState.selectedProjectId, author, text);
+        DOM.chatInput.value = '';
+    } catch (error) {
+        console.error("Error sending message:", error);
+        showToast("Failed to send message.", "error");
     }
 }
