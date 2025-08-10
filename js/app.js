@@ -30,7 +30,6 @@ const appState = {
     sidebarChatListener: null,
 };
 
-// Make appState globally accessible for the command palette
 window.appState = appState;
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -104,9 +103,7 @@ async function initialize(companyId) {
         setupUI();
         setupListeners();
         
-        // FIX: Call the updated presence management function which now correctly uses RTDB.
-        // It no longer needs the companyId passed here.
-        manageUserPresence(appState.user);
+        manageUserPresence(appState.user, companyId);
 
         document.getElementById('app-container').classList.remove('hidden');
         console.log("Initialization complete. App is ready.");
@@ -141,7 +138,6 @@ function setupListeners() {
 
     appState.notificationsListener = listenToNotifications(appState.user.uid, (notifications) => {
         appState.notifications = notifications;
-        // This would be the place to update a UI element for notifications
     });
     
     switchProject('all');
@@ -173,18 +169,15 @@ function renderFilteredTasks() {
 function applyFiltersAndSorts(tasks) {
     let filteredTasks = [...tasks];
 
-    // Search term filter
     if (appState.searchTerm) {
         const lowercasedTerm = appState.searchTerm.toLowerCase();
         filteredTasks = filteredTasks.filter(task => task.name.toLowerCase().includes(lowercasedTerm));
     }
 
-    // Assignee filter
     if (appState.filterAssignee !== 'all') {
         filteredTasks = filteredTasks.filter(task => task.assignedTo && task.assignedTo.includes(appState.filterAssignee));
     }
 
-    // Sorting
     const [sortBy, direction] = appState.sortTasks.split('-');
     const dir = direction === 'asc' ? 1 : -1;
     const priorityMap = { high: 3, medium: 2, low: 1 };
@@ -207,7 +200,7 @@ function applyFiltersAndSorts(tasks) {
 }
 
 function setupUI() {
-    UImanager.initializeI18n();
+    initializeI18n();
     UImanager.updateUserInfo(appState.profile, appState.company);
 
     document.getElementById('logout-button').addEventListener('click', () => {
@@ -235,7 +228,6 @@ function setupUI() {
         renderFilteredTasks();
     });
 
-    // Filter and Sort event listeners
     document.getElementById('filter-assignee').addEventListener('change', (e) => {
         appState.filterAssignee = e.target.value;
         renderFilteredTasks();
@@ -245,7 +237,6 @@ function setupUI() {
         renderFilteredTasks();
     });
 
-    // Other UI setups
     const logoUploadInput = document.getElementById('logo-upload-input');
     const changeLogoBtn = document.getElementById('change-logo-btn');
     if(changeLogoBtn) changeLogoBtn.addEventListener('click', () => logoUploadInput.click());
@@ -271,14 +262,14 @@ function setupUI() {
 
 function populateAssigneeFilter(team) {
     const select = document.getElementById('filter-assignee');
-    select.innerHTML = '<option value="all">All Members</option>'; // Reset
+    select.innerHTML = '<option value="all">All Members</option>';
     team.forEach(user => {
         const option = document.createElement('option');
         option.value = user.id;
         option.textContent = user.nickname;
         select.appendChild(option);
     });
-    select.value = appState.filterAssignee; // Restore previous selection
+    select.value = appState.filterAssignee;
 }
 
 async function handleLogoUpload(e) {
