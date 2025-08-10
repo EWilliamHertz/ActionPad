@@ -1,8 +1,8 @@
 // FILE: js/dashboard.js
 import { auth } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js';
-import {
-    getUserProfile,
+import { 
+    getUserProfile, 
     getCompanyDashboardData,
     signOut,
     joinCompanyWithReferralId,
@@ -12,7 +12,7 @@ import {
 import { showToast } from './toast.js';
 
 let currentUser = null;
-let taskStatusChart = null; // Variable to hold the chart instance
+let taskStatusChart = null; 
 
 const getUserProfileWithRetry = async (userId, retries = 3, delay = 1000) => {
     for (let i = 0; i < retries; i++) {
@@ -29,7 +29,7 @@ const getUserProfileWithRetry = async (userId, retries = 3, delay = 1000) => {
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         currentUser = user;
-        const profileSnap = await getUserProfileWithRetry(user.uid);
+        const profileSnap = await getUserProfileWithRetry(user.uid); 
         if (profileSnap.exists()) {
             const profile = profileSnap.data();
             updateUserInfo(profile);
@@ -67,7 +67,7 @@ async function renderCompanyCards(companyMemberships) {
         const cardPromises = companyMemberships.map(membership => getCompanyDashboardData(membership.companyId));
         const companiesData = await Promise.all(cardPromises);
 
-        container.innerHTML = '';
+        container.innerHTML = ''; 
 
         companiesData.forEach((data, index) => {
             if (data.company) {
@@ -105,10 +105,16 @@ function createCompanyCard(data, membership) {
             </a>`
         : '';
 
+    // NEW: Logic to display company logo or a placeholder
+    const companyLogoUrl = company.logoURL || `https://placehold.co/48x48/E9ECEF/495057?text=${company.name.charAt(0).toUpperCase()}`;
+
     card.innerHTML = `
         <div class="company-card-header">
-            <h3>${company.name}</h3>
-            <p>Your role: ${membership.role}</p>
+            <img src="${companyLogoUrl}" alt="${company.name} Logo" class="company-logo-small">
+            <div>
+                <h3>${company.name}</h3>
+                <p>Your role: ${membership.role}</p>
+            </div>
         </div>
         <div class="company-card-progress">
             <div class="progress-bar-container">
@@ -137,9 +143,7 @@ function createCompanyCard(data, membership) {
         </div>
     `;
 
-    // THIS IS THE FIX:
     card.querySelector('.switch-company-btn').addEventListener('click', () => {
-        // We MUST set the item in localStorage BEFORE redirecting.
         localStorage.setItem('selectedCompanyId', membership.companyId);
         window.location.href = 'index.html';
     });
@@ -158,7 +162,6 @@ function createCompanyCard(data, membership) {
 
 
 async function renderDashboardWidgets(userId, companyIds) {
-    // Upcoming Deadlines Widget
     const upcomingDeadlinesContainer = document.getElementById('upcoming-deadlines-widget');
     upcomingDeadlinesContainer.innerHTML = '<h4>Upcoming Deadlines</h4><div class="skeleton-widget-item"></div><div class="skeleton-widget-item"></div>';
     
@@ -177,7 +180,6 @@ async function renderDashboardWidgets(userId, companyIds) {
         upcomingDeadlinesContainer.innerHTML += '<p>No upcoming deadlines in the next 7 days.</p>';
     }
 
-    // Task Status Chart Widget
     const allTasks = [];
     for (const id of companyIds) {
         const data = await getCompanyDashboardData(id);
@@ -204,11 +206,7 @@ function renderTaskStatusChart(tasks) {
                 statusCounts['in-progress'] || 0,
                 statusCounts['done'] || 0
             ],
-            backgroundColor: [
-                '#F6E05E', // Medium Priority Color (for To Do)
-                '#4A90E2', // Primary Color (for In Progress)
-                '#68D391'  // Low Priority/Success Color (for Done)
-            ],
+            backgroundColor: ['#F6E05E', '#4A90E2', '#68D391'],
             borderColor: '#FFFFFF',
             borderWidth: 2
         }]
@@ -224,29 +222,18 @@ function renderTaskStatusChart(tasks) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                }
-            }
+            plugins: { legend: { position: 'bottom' } }
         }
     });
 }
 
-
-// Modal Handling
 const joinModal = document.getElementById('join-company-modal');
 const createModal = document.getElementById('create-company-modal');
-
 document.getElementById('join-company-btn').addEventListener('click', () => joinModal.classList.remove('hidden'));
 document.getElementById('create-company-btn').addEventListener('click', () => createModal.classList.remove('hidden'));
-
 document.querySelectorAll('.modal-close').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-        e.target.closest('.modal-overlay').classList.add('hidden');
-    });
+    btn.addEventListener('click', (e) => e.target.closest('.modal-overlay').classList.add('hidden'));
 });
-
 document.getElementById('join-company-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const referralId = document.getElementById('join-referral-id').value;
@@ -258,7 +245,6 @@ document.getElementById('join-company-form').addEventListener('submit', async (e
         showToast(error.message, 'error');
     }
 });
-
 document.getElementById('create-company-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const companyName = document.getElementById('create-company-name').value;
@@ -271,5 +257,4 @@ document.getElementById('create-company-form').addEventListener('submit', async 
         showToast(error.message, 'error');
     }
 });
-
 document.getElementById('logout-button').addEventListener('click', signOut);
