@@ -11,13 +11,17 @@ export function formatTime(timestamp) {
 }
 
 export function formatLastSeen(timestamp) {
-    if (!timestamp) return 'Offline';
+    if (!timestamp || !timestamp.toDate) return 'Offline';
     const now = new Date();
     const lastSeen = timestamp.toDate();
     const diffSeconds = Math.floor((now - lastSeen) / 1000);
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
 
-    if (diffSeconds < 60) return 'Just now';
-    if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m ago`;
-    if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h ago`;
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return 'Yesterday';
     return lastSeen.toLocaleDateString();
 }
