@@ -84,5 +84,25 @@
         </div>
     </footer>
     <script type="module" src="js/auth.js"></script>
+    <!-- New script to handle referral ID and disable fields -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const refId = urlParams.get('ref');
+            if (refId) {
+                const referralIdInput = document.getElementById('register-referralid');
+                const companyNameInput = document.getElementById('register-companyname');
+                const companyRoleInput = document.getElementById('register-companyrole');
+                
+                referralIdInput.value = refId;
+                
+                companyNameInput.value = "Joining existing company...";
+                companyNameInput.disabled = true;
+                
+                companyRoleInput.value = "Member";
+                companyRoleInput.disabled = true;
+            }
+        });
+    </script>
 </body>
 </html>
