@@ -192,16 +192,19 @@ function renderVoiceRoomMembers(roomName, peerIds) {
     const membersDiv = roomEl.querySelector('.voice-room-members');
     if (!membersDiv) return;
 
-    if (peerIds.length > 0) {
-        membersDiv.innerHTML = peerIds.map(uid => {
-            const user = appState.team.find(m => m.id === uid);
-            if (!user) return ''; // Don't render if user data isn't loaded yet
-            const avatarSrc = user.avatarURL || `https://placehold.co/32x32/E9ECEF/495057?text=${user.nickname.charAt(0).toUpperCase()}`;
-            return `
-                <div class="avatar-small" id="avatar-${uid}" title="${user.nickname}">
-                    <img src="${avatarSrc}" alt="${user.nickname}">
-                </div>`;
-        }).join('');
+membersDiv.innerHTML = peerIds.map(uid => {
+    const userProfile = appState.team.find(m => m.id === uid);
+    
+    // Use the user's profile if available, otherwise use placeholders.
+    const nickname = userProfile?.nickname || 'User';
+    const avatarSrc = userProfile?.avatarURL || `https://placehold.co/32x32/E9ECEF/495057?text=${nickname.charAt(0).toUpperCase()}`;
+
+    // Always return an element so the speaking indicator can attach to it.
+    return `
+        <div class="avatar-small" id="avatar-${uid}" title="${nickname}">
+            <img src="${avatarSrc}" alt="${nickname}">
+        </div>`;
+}).join('');
     } else {
         membersDiv.innerHTML = ''; // Clear if no members
     }
