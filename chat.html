@@ -322,6 +322,7 @@
         .voice-room-item {
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 10px;
             padding: 0.5rem;
             border-radius: 6px;
@@ -330,6 +331,31 @@
         }
         .voice-room-item:hover {
             background-color: #e9ecef;
+        }
+
+        .voice-room-item-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .voice-room-item-info span {
+            font-size: 1rem;
+            font-weight: 500;
+        }
+        
+        .voice-room-item button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .voice-room-item button.active {
+            background-color: #F56565;
         }
     </style>
 </head>
@@ -389,12 +415,18 @@
                 <h3>Voice Rooms</h3>
                 <ul id="voice-room-list" class="space-y-2">
                     <li class="voice-room-item" data-room-name="General Room">
-                        <span style="font-size: 1.2rem;">🎙️</span>
-                        <span>General Room</span>
+                        <div class="voice-room-item-info">
+                            <span style="font-size: 1.2rem;">🎙️</span>
+                            <span>General Room</span>
+                        </div>
+                        <button class="join-voice-room-btn">Join</button>
                     </li>
                     <li class="voice-room-item" data-room-name="Design Meeting">
-                        <span style="font-size: 1.2rem;">🎙️</span>
-                        <span>Design Meeting</span>
+                        <div class="voice-room-item-info">
+                            <span style="font-size: 1.2rem;">🎙️</span>
+                            <span>Design Meeting</span>
+                        </div>
+                        <button class="join-voice-room-btn">Join</button>
                     </li>
                 </ul>
             </div>
