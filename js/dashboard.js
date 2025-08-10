@@ -1,259 +1,214 @@
-// --- Import initialized Firebase services and SDK functions ---
+// FILE: js/dashboard.js
+
 import { auth, db } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { 
-    collection, 
-    query, 
-    where, 
-    onSnapshot, 
-    doc, 
-    getDoc, 
-    getDocs,
-    setDoc, 
-    serverTimestamp,
-    Timestamp,
-    updateDoc,
-    arrayUnion
-} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-
-// --- Import your UI and utility modules ---
+import { signOut } from './services/auth.js';
+import { getUserProfile } from './services/user.js';
+import { getCompanyDashboardData, createNewCompany, joinCompanyWithReferralId } from './services/index.js';
 import { showToast } from './toast.js';
-import { initializeI18n, getTranslatedString } from './i18n.js';
+
+let currentUser = null;
+let taskStatusChart = null;
 
 // --- Main Setup ---
 document.addEventListener('DOMContentLoaded', () => {
-    initializeI18n();
-    
-    // This listener is the entry point for the dashboard
     onAuthStateChanged(auth, user => {
         if (user) {
-            if (!user.emailVerified) {
-                // If the user is not verified, they shouldn't be on the dashboard.
-                // Redirect them to the login page where the verification notice is shown.
-                window.location.replace('login.html');
-                return;
-            }
-            // User is logged in and verified, load their data.
-            loadDashboardData(user);
-            setupEventListeners(user);
+            currentUser = user;
+            loadDashboard();
+            setupEventListeners();
         } else {
-            // No user is signed in, redirect to login.
             window.location.replace('login.html');
         }
     });
 });
 
-// --- Event Listeners Setup ---
-function setupEventListeners(user) {
-    const createCompanyBtn = document.getElementById('create-company-btn');
-    const joinCompanyBtn = document.getElementById('join-company-btn');
-    const createCompanyModal = document.getElementById('create-company-modal');
-    const joinCompanyModal = document.getElementById('join-company-modal');
-    const createCompanyForm = document.getElementById('create-company-form');
-    const joinCompanyForm = document.getElementById('join-company-form');
+async function loadDashboard() {
+    if (!currentUser) return;
 
-    if (createCompanyBtn) {
-        createCompanyBtn.addEventListener('click', () => createCompanyModal.classList.remove('hidden'));
+    try {
+        const profileSnap = await getUserProfile(currentUser.uid);
+        if (profileSnap.exists()) {
+            const profile = profileSnap.data();
+            document.getElementById('user-nickname').textContent = profile.nickname;
+            if (profile.avatarURL) {
+                document.getElementById('user-avatar-header').src = profile.avatarURL;
+            }
+        }
+
+        const companiesContainer = document.getElementById('company-cards-container');
+        companiesContainer.innerHTML = '<div class="skeleton-card"></div><div class="skeleton-card"></div>';
+
+        const userProfile = profileSnap.data();
+        const companyMemberships = userProfile.companies || [];
+
+        if (companyMemberships.length === 0) {
+            companiesContainer.innerHTML = `<p>You haven't joined any companies yet. Create one or join one to get started!</p>`;
+            document.getElementById('upcoming-deadlines-widget').innerHTML = '<h4>Upcoming Deadlines</h4><p>No data</p>';
+            return;
+        }
+
+        const allCompanyData = await Promise.all(
+            companyMemberships.map(mem => getCompanyDashboardData(mem.companyId))
+        );
+
+        renderCompanyCards(allCompanyData);
+        renderGlobalWidgets(allCompanyData);
+
+    } catch (error) {
+        console.error("Dashboard loading failed:", error);
+        showToast("Could not load dashboard data.", "error");
     }
-    if (joinCompanyBtn) {
-        joinCompanyBtn.addEventListener('click', () => joinCompanyModal.classList.remove('hidden'));
+}
+
+function renderCompanyCards(allCompanyData) {
+    const container = document.getElementById('company-cards-container');
+    if (!container) return;
+
+    if (!allCompanyData || allCompanyData.length === 0) {
+        container.innerHTML = `<p>You aren't a member of any companies yet.</p>`;
+        return;
     }
 
-    // Generic modal close logic
+    container.innerHTML = allCompanyData.map(({ company, tasks, members }) => {
+        if (!company) return '';
+        const tasksDone = tasks.filter(t => t.status === 'done').length;
+        const totalTasks = tasks.length;
+        const progress = totalTasks > 0 ? (tasksDone / totalTasks) * 100 : 0;
+
+        return `
+            <div class="company-card">
+                <div class="company-card-header">
+                     <img src="${company.logoURL || `https://placehold.co/48x48/E9ECEF/495057?text=${company.name.charAt(0).toUpperCase()}`}" alt="${company.name} Logo" class="company-logo-small">
+                    <div>
+                        <h3>${company.name}</h3>
+                        <p>${members.length} member(s)</p>
+                    </div>
+                </div>
+                <div class="company-card-progress">
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" style="width: ${progress.toFixed(0)}%;"></div>
+                    </div>
+                    <span class="progress-text">${tasksDone} of ${totalTasks} tasks complete</span>
+                </div>
+                <div class="company-card-actions">
+                    <button class="switch-company-btn" data-company-id="${company.id}">Enter App</button>
+                    <a href="company-settings.html" class="settings-btn" data-company-id="${company.id}">⚙️</a>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+
+function renderGlobalWidgets(allCompanyData) {
+    const allTasks = allCompanyData.flatMap(data => data.tasks);
+
+    // Render Task Status Chart
+    const tasksByStatus = {
+        todo: allTasks.filter(t => t.status === 'todo').length,
+        'in-progress': allTasks.filter(t => t.status === 'in-progress').length,
+        done: allTasks.filter(t => t.status === 'done').length,
+    };
+    const ctx = document.getElementById('task-status-chart')?.getContext('2d');
+    if (ctx) {
+        if (taskStatusChart) {
+            taskStatusChart.destroy();
+        }
+        taskStatusChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['To Do', 'In Progress', 'Done'],
+                datasets: [{
+                    label: 'Tasks by Status',
+                    data: [tasksByStatus.todo, tasksByStatus['in-progress'], tasksByStatus.done],
+                    backgroundColor: ['#F56565', '#F6E05E', '#68D391'],
+                    borderColor: 'var(--surface-color)',
+                    borderWidth: 4
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'bottom' } } }
+        });
+    }
+
+    // Render Upcoming Deadlines
+    const deadlinesContainer = document.getElementById('upcoming-deadlines-widget');
+    const today = new Date();
+    const nextWeek = new Date(today);
+    nextWeek.setDate(today.getDate() + 7);
+
+    const upcomingTasks = allTasks
+        .filter(t => t.dueDate && new Date(t.dueDate) >= today && new Date(t.dueDate) <= nextWeek)
+        .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+
+    deadlinesContainer.innerHTML = '<h4>Upcoming Deadlines</h4>';
+    if (upcomingTasks.length > 0) {
+        deadlinesContainer.innerHTML += `<ul class="widget-list">${upcomingTasks.map(t => `<li>${t.name} - ${new Date(t.dueDate).toLocaleDateString()}</li>`).join('')}</ul>`;
+    } else {
+        deadlinesContainer.innerHTML += '<p>No deadlines in the next 7 days.</p>';
+    }
+}
+
+function setupEventListeners() {
+    document.getElementById('logout-button').addEventListener('click', signOut);
+
+    document.getElementById('company-cards-container').addEventListener('click', (e) => {
+        const target = e.target;
+        if (target.matches('.switch-company-btn')) {
+            localStorage.setItem('selectedCompanyId', target.dataset.companyId);
+            window.location.href = 'index.html';
+        }
+        if (target.closest('.settings-btn')) {
+             localStorage.setItem('selectedCompanyId', target.closest('.settings-btn').dataset.companyId);
+             window.location.href = 'company-settings.html';
+        }
+    });
+
+    // Modal Handling
+    const joinModal = document.getElementById('join-company-modal');
+    const createModal = document.getElementById('create-company-modal');
+    document.getElementById('join-company-btn').addEventListener('click', () => joinModal.classList.remove('hidden'));
+    document.getElementById('create-company-btn').addEventListener('click', () => createModal.classList.remove('hidden'));
+
     document.querySelectorAll('.modal-close').forEach(btn => {
         btn.addEventListener('click', () => {
-            btn.closest('.modal').classList.add('hidden');
+            joinModal.classList.add('hidden');
+            createModal.classList.add('hidden');
         });
     });
 
-    if (createCompanyForm) {
-        createCompanyForm.addEventListener('submit', (e) => handleCreateCompany(e, user));
-    }
-    if (joinCompanyForm) {
-        joinCompanyForm.addEventListener('submit', (e) => handleJoinCompany(e, user));
-    }
-}
-
-// --- Data Loading and Rendering ---
-
-async function loadDashboardData(user) {
-    const mainContent = document.getElementById('dashboard-main-content');
-    if(mainContent) mainContent.innerHTML = '<div class="loader">Loading your dashboard...</div>';
-
-    try {
-        // --- Inlined logic from services/company.js ---
-        const companiesRef = collection(db, 'companies');
-        const q = query(companiesRef, where('members', 'array-contains', user.uid));
-        const querySnapshot = await getDocs(q);
-        const companies = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        // --- End of inlined logic ---
-
-        renderDashboard(user, companies);
-    } catch (error) {
-        console.error("Failed to load dashboard data:", error);
-        if(mainContent) mainContent.innerHTML = '<p class="error">Could not load your dashboard. Please try again later.</p>';
-        showToast('Error loading dashboard.', 'error');
-    }
-}
-
-async function renderDashboard(user, companies) {
-    const companiesContainer = document.getElementById('companies-container');
-    const tasksByStatusContainer = document.getElementById('tasks-by-status');
-    const upcomingDeadlinesContainer = document.getElementById('upcoming-deadlines');
-
-    // Render Companies
-    if (companiesContainer) {
-        if (companies.length > 0) {
-            companiesContainer.innerHTML = companies.map(company => `
-                <div class="company-card" data-company-id="${company.id}">
-                    <h3>${company.name}</h3>
-                    <p>Click to view projects</p>
-                </div>
-            `).join('');
-            // Add event listeners to company cards
-            companiesContainer.querySelectorAll('.company-card').forEach(card => {
-                card.addEventListener('click', () => {
-                    localStorage.setItem('selectedCompanyId', card.dataset.companyId);
-                    window.location.href = 'index.html'; // Or chat.html, or your main app view
-                });
-            });
-        } else {
-            companiesContainer.innerHTML = '<p>You are not a member of any companies yet.</p>';
+    document.getElementById('create-company-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const companyName = document.getElementById('create-company-name').value;
+        const userRole = document.getElementById('create-company-role').value;
+        if (!companyName || !userRole) {
+            showToast("All fields are required.", "error");
+            return;
         }
-    }
-
-    // Render Task Widgets (if there are companies)
-    if (companies.length > 0) {
-        const companyIds = companies.map(c => c.id);
-        
-        // --- Inlined logic from services/task.js ---
-        const tasksRef = collection(db, 'tasks');
-        
-        // Tasks by Status
-        const statusQuery = query(tasksRef, where('companyId', 'in', companyIds));
-        const statusSnapshot = await getDocs(statusQuery);
-        const allTasks = statusSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
-        const tasksByStatus = {
-            todo: allTasks.filter(t => t.status === 'todo').length,
-            inprogress: allTasks.filter(t => t.status === 'inprogress').length,
-            done: allTasks.filter(t => t.status === 'done').length,
-        };
-
-        // Upcoming Deadlines
-        const sevenDaysFromNow = Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000);
-        const upcomingQuery = query(tasksRef, 
-            where('companyId', 'in', companyIds), 
-            where('dueDate', '<=', sevenDaysFromNow)
-        );
-        const upcomingSnapshot = await getDocs(upcomingQuery);
-        const upcomingTasks = upcomingSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        // --- End of inlined logic ---
-
-        if (tasksByStatusContainer) {
-            tasksByStatusContainer.innerHTML = `
-                <div class="task-status-item todo"><span>${tasksByStatus.todo}</span> To Do</div>
-                <div class="task-status-item inprogress"><span>${tasksByStatus.inprogress}</span> In Progress</div>
-                <div class="task-status-item done"><span>${tasksByStatus.done}</span> Done</div>
-            `;
+        try {
+            const newCompanyId = await createNewCompany(currentUser, companyName, userRole);
+            localStorage.setItem('selectedCompanyId', newCompanyId);
+            window.location.href = 'index.html';
+        } catch (error) {
+            showToast("Failed to create company.", "error");
         }
-
-        if (upcomingDeadlinesContainer) {
-            if (upcomingTasks.length > 0) {
-                upcomingDeadlinesContainer.innerHTML = upcomingTasks
-                    .sort((a, b) => a.dueDate.toMillis() - b.dueDate.toMillis())
-                    .map(task => `
-                        <div class="deadline-item">
-                            <span class="task-name">${task.name}</span>
-                            <span class="task-due-date">Due: ${task.dueDate.toDate().toLocaleDateString()}</span>
-                        </div>
-                    `).join('');
-            } else {
-                upcomingDeadlinesContainer.innerHTML = '<p>No upcoming deadlines in the next 7 days.</p>';
-            }
-        }
-    } else {
-        if (tasksByStatusContainer) tasksByStatusContainer.innerHTML = '';
-        if (upcomingDeadlinesContainer) upcomingDeadlinesContainer.innerHTML = '';
-    }
-}
-
-// --- Company Management Handlers ---
-
-async function handleCreateCompany(event, user) {
-    event.preventDefault();
-    const form = event.target;
-    const companyName = form.querySelector('#new-company-name').value.trim();
-    if (!companyName) {
-        showToast('Please enter a company name.', 'error');
-        return;
-    }
+    });
     
-    try {
-        // --- Inlined logic from services/company.js ---
-        const companyRef = doc(collection(db, 'companies'));
-        const companyId = companyRef.id;
-        const referralId = `ref-${companyId.substring(0, 6)}`;
-        
-        await setDoc(companyRef, {
-            name: companyName,
-            ownerId: user.uid,
-            members: [user.uid], // Add the creator as the first member
-            createdAt: serverTimestamp(),
-            referralId: referralId
-        });
-        // --- End of inlined logic ---
-        
-        showToast('Company created successfully!', 'success');
-        form.closest('.modal').classList.add('hidden');
-        loadDashboardData(user); // Refresh dashboard
-    } catch (error) {
-        console.error("Error creating company:", error);
-        showToast('Failed to create company.', 'error');
-    }
-}
-
-async function handleJoinCompany(event, user) {
-    event.preventDefault();
-    const form = event.target;
-    const referralId = form.querySelector('#join-referral-id').value.trim();
-    if (!referralId) {
-        showToast('Please enter a referral ID.', 'error');
-        return;
-    }
-
-    try {
-        // 1. Find the company with the given referral ID.
-        const companiesRef = collection(db, 'companies');
-        const q = query(companiesRef, where("referralId", "==", referralId));
-        const querySnapshot = await getDocs(q);
-
-        if (querySnapshot.empty) {
-            showToast('Invalid referral ID. No company found.', 'error');
-            return;
+    document.getElementById('join-company-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const referralId = document.getElementById('join-referral-id').value;
+        const role = document.getElementById('join-company-role').value;
+        if(!referralId || !role) {
+             showToast("All fields are required.", "error");
+             return;
         }
-
-        const companyDoc = querySnapshot.docs[0];
-        const companyData = companyDoc.data();
-
-        // 2. Check if user is already a member.
-        if (companyData.members && companyData.members.includes(user.uid)) {
-            showToast("You are already a member of this company.", 'info');
-            form.closest('.modal').classList.add('hidden');
-            return;
+        try {
+            await joinCompanyWithReferralId(currentUser, referralId, role);
+            showToast("Successfully joined company!", "success");
+            createModal.classList.add('hidden');
+            loadDashboard(); // Refresh the dashboard
+        } catch (error) {
+            showToast(error.message, "error");
         }
-
-        // 3. Add the user to the company's member list using arrayUnion.
-        await updateDoc(companyDoc.ref, {
-            members: arrayUnion(user.uid)
-        });
-
-        showToast(`Successfully joined ${companyData.name}!`, 'success');
-        form.closest('.modal').classList.add('hidden');
-        loadDashboardData(user); // Refresh the dashboard to show the new company.
-
-    } catch (error) {
-        console.error("Error joining company:", error);
-        showToast('Failed to join company. Please try again.', 'error');
-    }
+    });
 }
