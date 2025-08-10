@@ -9,28 +9,19 @@ import { listenToCompanyPresence } from './services/presence.js';
 import { listenToProjectChat, addChatMessage } from './services/chat.js';
 import { listenToCompanyTasks } from './services/task.js';
 import { showToast } from './toast.js';
+import { doc, collection, onSnapshot, updateDoc, arrayUnion, arrayRemove, setDoc, getDoc, deleteDoc, query, where, serverTimestamp, addDoc, writeBatch } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
-// Import necessary Firestore functions for signaling
-import { doc, getDoc, setDoc, onSnapshot, updateDoc, arrayUnion, collection, query, where, orderBy, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
-
+// --- STATE MANAGEMENT ---
 let appState = {
-    user: null,
-    profile: null,
-    company: null,
-    projects: [],
-    team: [],
+    user: null, profile: null, company: null, projects: [], team: [],
     selectedProjectId: null,
-    projectListener: null,
-    teamListener: null,
-    chatListener: null,
-    tasksListener: null,
-    // New state for voice chat
+    listeners: {}, // Central object to hold all unsubscribe functions
     localStream: null,
-    voiceRoomRef: null,
-    peerConnections: new Map(),
-    voiceRoomUsers: new Map(),
+    peerConnections: new Map(), // key: remoteUserId, value: RTCPeerConnection
+    currentVoiceRoom: null, // { name, uniqueId }
 };
 
+// --- DOM ELEMENTS ---
 const DOM = {
     projectList: document.getElementById('project-list-container'),
     teamList: document.getElementById('team-list'),
@@ -39,34 +30,26 @@ const DOM = {
     chatForm: document.getElementById('chat-input-form'),
     chatInput: document.getElementById('chat-input'),
     pageContainer: document.getElementById('chat-page-container'),
-    chatHeader: document.getElementById('chat-header'),
-    addProjectForm: document.getElementById('add-project-form-chat'),
-    newProjectInput: document.getElementById('new-project-input-chat'),
     voiceRoomList: document.getElementById('voice-room-list'),
 };
 
-const servers = {
-    iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-    ]
-};
+const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
+const remoteAudioStreams = new Map();
 
+// --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
     onAuthStateChanged(auth, async user => {
         if (user) {
             appState.user = user;
             try {
                 await initialize();
-                DOM.pageContainer.classList.remove('hidden'); // Show the chat UI
+                DOM.pageContainer.classList.remove('hidden');
             } catch (error) {
-                console.error("Chat app initialization failed:", error);
+                console.error("Initialization failed:", error);
                 showToast(error.message, 'error');
-                // Redirect on critical failure after a short delay
                 setTimeout(() => window.location.replace('dashboard.html'), 3000);
             }
         } else {
-            // User is not signed in, redirect to login
             window.location.replace('login.html');
         }
     });
@@ -74,77 +57,266 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function initialize() {
     const profileSnap = await getUserProfile(appState.user.uid);
-    if (!profileSnap.exists()) {
-        throw new Error("User profile not found. Please log out and back in on the dashboard page.");
-    }
+    if (!profileSnap.exists()) throw new Error("User profile not found.");
     appState.profile = { uid: appState.user.uid, ...profileSnap.data() };
 
     const companyId = localStorage.getItem('selectedCompanyId');
-    if (!companyId) {
-        throw new Error("No company selected. Please return to the dashboard.");
-    }
+    if (!companyId) throw new Error("No company selected.");
     const companySnap = await getCompany(companyId);
-    if (!companySnap.exists()) {
-        throw new Error("Company not found.");
-    }
+    if (!companySnap.exists()) throw new Error("Company not found.");
     appState.company = { id: companySnap.id, ...companySnap.data() };
 
-    setupListeners();
     setupUIEvents();
+    setupListeners();
+}
+
+function cleanupListeners() {
+    Object.values(appState.listeners).forEach(unsubscribe => unsubscribe && unsubscribe());
+    appState.listeners = {};
 }
 
 function setupListeners() {
-    if (appState.projectListener) appState.projectListener();
-    if (appState.teamListener) appState.teamListener();
-
-    appState.projectListener = listenToCompanyProjects(appState.company.id, (projects) => {
+    cleanupListeners();
+    appState.listeners.projects = listenToCompanyProjects(appState.company.id, (projects) => {
         appState.projects = projects;
         renderProjectList();
-        if (!appState.selectedProjectId && projects.length > 0) {
-            switchProject(projects[0].id);
+        if (!appState.selectedProjectId && projects.length > 0) switchProject(projects[0].id);
+    });
+
+    appState.listeners.team = listenToCompanyPresence(appState.company.id, (team) => {
+        appState.team = team;
+        renderTeamList();
+        if (appState.currentVoiceRoom) {
+            // Re-render voice rooms if team data changes (e.g., for avatars)
+            const roomRef = doc(db, 'voice_rooms', appState.currentVoiceRoom.uniqueId);
+            getDoc(roomRef).then(docSnap => {
+                if(docSnap.exists()) renderVoiceRooms([docSnap.data()]);
+            });
         }
     });
 
-    appState.teamListener = listenToCompanyPresence(appState.company.id, (team) => {
-        appState.team = team;
-        renderTeamList();
+    const voiceRoomsQuery = query(collection(db, 'voice_rooms'), where('companyId', '==', appState.company.id));
+    appState.listeners.voiceRooms = onSnapshot(voiceRoomsQuery, (snapshot) => {
+        const roomsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderVoiceRooms(roomsData);
     });
 }
 
+// --- UI EVENT HANDLERS ---
 function setupUIEvents() {
     document.getElementById('logout-button').addEventListener('click', () => {
-        localStorage.removeItem('selectedCompanyId');
+        handleLeaveVoiceRoom();
         signOut();
     });
-    
     DOM.projectList.addEventListener('click', (e) => {
         const item = e.target.closest('.project-item-chat');
-        if (item) {
-            const projectId = item.dataset.projectId;
-            if (projectId !== appState.selectedProjectId) {
-                switchProject(projectId);
-            }
-        }
+        if (item) switchProject(item.dataset.projectId);
     });
-
     DOM.chatForm.addEventListener('submit', handleSendMessage);
-    DOM.addProjectForm.addEventListener('submit', handleAddProject);
+
     DOM.voiceRoomList.addEventListener('click', (e) => {
         const joinBtn = e.target.closest('.join-voice-room-btn');
         if (joinBtn) {
-            const roomName = joinBtn.closest('.voice-room-item').dataset.roomName;
+            e.stopPropagation(); // Prevent dropdown from toggling
+            const roomItem = joinBtn.closest('.voice-room-item');
+            const roomName = roomItem.dataset.roomName;
             if (joinBtn.classList.contains('active')) {
-                handleLeaveVoiceRoom(roomName, joinBtn);
+                handleLeaveVoiceRoom();
             } else {
-                handleJoinVoiceRoom(roomName, joinBtn);
+                handleJoinVoiceRoom(roomName);
+            }
+        }
+        const roomMain = e.target.closest('.voice-room-main');
+        if (roomMain) {
+            const memberList = roomMain.nextElementSibling;
+            if (memberList && memberList.classList.contains('voice-room-members')) {
+                memberList.classList.toggle('hidden');
             }
         }
     });
 }
 
+// --- RENDER FUNCTIONS ---
+function renderVoiceRooms(roomsData) {
+    const staticRooms = Array.from(DOM.voiceRoomList.querySelectorAll('.voice-room-item'));
+    staticRooms.forEach(roomEl => {
+        const roomName = roomEl.dataset.roomName;
+        const roomData = roomsData.find(r => r.name === roomName);
+        const membersDiv = roomEl.querySelector('.voice-room-members');
+        
+        if (roomData && roomData.users && roomData.users.length > 0) {
+            const membersHtml = roomData.users.map(uid => {
+                const user = appState.team.find(m => m.id === uid);
+                if (!user) return '';
+                const avatarSrc = user.avatarURL || `https://placehold.co/28x28/E9ECEF/495057?text=${user.nickname.charAt(0).toUpperCase()}`;
+                return `<div class="avatar-small" title="${user.nickname}"><img src="${avatarSrc}" alt="${user.nickname}" style="width: 28px; height: 28px;"></div>`;
+            }).join('');
+            membersDiv.innerHTML = membersHtml;
+        } else {
+            membersDiv.innerHTML = '';
+        }
+    });
+}
+
+// --- VOICE CHAT (WebRTC) LOGIC ---
+async function handleJoinVoiceRoom(roomName) {
+    if (appState.currentVoiceRoom) await handleLeaveVoiceRoom();
+
+    try {
+        appState.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+        console.error("Failed to get audio stream:", err);
+        return showToast("Microphone access denied. Please check browser/OS settings.", "error");
+    }
+    
+    const uniqueId = `${appState.company.id}_${roomName.replace(/\s+/g, '-')}`;
+    appState.currentVoiceRoom = { name: roomName, uniqueId };
+    
+    const roomRef = doc(db, 'voice_rooms', uniqueId);
+    await setDoc(roomRef, { 
+        name: roomName,
+        companyId: appState.company.id, 
+        users: arrayUnion(appState.user.uid) 
+    }, { merge: true });
+
+    appState.listeners.voiceRoomUsers = onSnapshot(roomRef, (doc) => {
+        const users = doc.data()?.users || [];
+        const remoteUsers = users.filter(uid => uid !== appState.user.uid);
+        
+        for (const remoteId of remoteUsers) {
+            if (!appState.peerConnections.has(remoteId)) {
+                createPeerConnection(remoteId);
+            }
+        }
+        
+        appState.peerConnections.forEach((pc, remoteId) => {
+            if (!remoteUsers.includes(remoteId)) {
+                pc.close();
+                appState.peerConnections.delete(remoteId);
+                const audioEl = remoteAudioStreams.get(remoteId);
+                if (audioEl) audioEl.remove();
+                remoteAudioStreams.delete(remoteId);
+            }
+        });
+        renderVoiceRooms([{ id: uniqueId, ...doc.data() }]);
+    });
+    
+    updateVoiceRoomUI();
+}
+
+async function handleLeaveVoiceRoom() {
+    if (!appState.currentVoiceRoom) return;
+
+    const { uniqueId, name } = appState.currentVoiceRoom;
+    const roomRef = doc(db, 'voice_rooms', uniqueId);
+    
+    if (appState.listeners.voiceRoomUsers) appState.listeners.voiceRoomUsers();
+    
+    Object.keys(appState.listeners).forEach(key => {
+        if(key.startsWith('pc_')) appState.listeners[key]();
+    });
+
+    appState.peerConnections.forEach(pc => pc.close());
+    appState.peerConnections.clear();
+    remoteAudioStreams.forEach(audio => audio.remove());
+    remoteAudioStreams.clear();
+
+    if (appState.localStream) {
+        appState.localStream.getTracks().forEach(track => track.stop());
+        appState.localStream = null;
+    }
+
+    await updateDoc(roomRef, { users: arrayRemove(appState.user.uid) });
+
+    const roomSnap = await getDoc(roomRef);
+    if ((roomSnap.data()?.users || []).length === 0) {
+        const batch = writeBatch(db);
+        const subcollections = ['offers', 'answers', 'candidates'];
+        for (const sub of subcollections) {
+            const subcollRef = collection(db, 'voice_rooms', uniqueId, sub);
+            const snapshot = await getDocs(subcollRef);
+            snapshot.docs.forEach(doc => batch.delete(doc.ref));
+        }
+        await batch.commit();
+        await deleteDoc(roomRef);
+    }
+
+    showToast(`Left voice room: ${name}`, 'success');
+    appState.currentVoiceRoom = null;
+    updateVoiceRoomUI();
+}
+
+async function createPeerConnection(remoteId) {
+    const pc = new RTCPeerConnection(servers);
+    appState.peerConnections.set(remoteId, pc);
+
+    appState.localStream.getTracks().forEach(track => pc.addTrack(track, appState.localStream));
+
+    pc.ontrack = event => {
+        if (!remoteAudioStreams.has(remoteId)) {
+            const audioEl = document.createElement('audio');
+            audioEl.srcObject = event.streams[0];
+            audioEl.autoplay = true;
+            document.body.appendChild(audioEl);
+            remoteAudioStreams.set(remoteId, audioEl);
+        }
+    };
+    
+    const { uniqueId } = appState.currentVoiceRoom;
+    const signalingRef = collection(db, 'voice_rooms', uniqueId, 'signaling');
+    
+    pc.onicecandidate = event => {
+        if (event.candidate) {
+            addDoc(signalingRef, { from: appState.user.uid, to: remoteId, candidate: event.candidate.toJSON() });
+        }
+    };
+
+    appState.listeners[`pc_${remoteId}`] = onSnapshot(query(signalingRef, where('to', '==', appState.user.uid), where('from', '==', remoteId)), (snapshot) => {
+        snapshot.docChanges().forEach(async change => {
+            if (change.type === 'added') {
+                const data = change.doc.data();
+                if (data.offer) {
+                    await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    await addDoc(signalingRef, { from: appState.user.uid, to: remoteId, answer });
+                } else if (data.answer) {
+                    if (!pc.currentRemoteDescription) {
+                        await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+                    }
+                } else if (data.candidate) {
+                    await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                }
+            }
+        });
+    });
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await addDoc(signalingRef, { from: appState.user.uid, to: remoteId, offer });
+}
+
+function updateVoiceRoomUI() {
+    DOM.voiceRoomList.querySelectorAll('.voice-room-item').forEach(el => {
+        const roomName = el.dataset.roomName;
+        const btn = el.querySelector('.join-voice-room-btn');
+        if (appState.currentVoiceRoom?.name === roomName) {
+            el.classList.add('active-room');
+            btn.textContent = 'Leave';
+            btn.classList.add('active');
+        } else {
+            el.classList.remove('active-room');
+            btn.textContent = 'Join';
+            btn.classList.remove('active');
+        }
+    });
+}
+
+
+// --- Functions below are unchanged but included for completeness ---
 function switchProject(projectId) {
-    if (appState.chatListener) appState.chatListener();
-    if (appState.tasksListener) appState.tasksListener();
+    if (appState.listeners.chat) appState.listeners.chat();
+    if (appState.listeners.tasks) appState.listeners.tasks();
 
     appState.selectedProjectId = projectId;
     const project = appState.projects.find(p => p.id === projectId);
@@ -157,15 +329,14 @@ function switchProject(projectId) {
 
     DOM.chatMessages.innerHTML = '<div class="loader">Loading...</div>';
 
-    appState.tasksListener = listenToCompanyTasks(appState.company.id, projectId, (tasks) => {
+    appState.listeners.tasks = listenToCompanyTasks(appState.company.id, projectId, (tasks) => {
         appState.tasks = tasks;
-        appState.chatListener = listenToProjectChat(projectId, (messages) => {
+        appState.listeners.chat = listenToProjectChat(projectId, (messages) => {
             appState.messages = messages;
             renderChatContent(tasks, messages);
         });
     });
 }
-
 function renderChatContent(tasks, messages) {
     DOM.chatMessages.innerHTML = '';
     
@@ -196,7 +367,6 @@ function renderChatContent(tasks, messages) {
 
     DOM.chatMessages.scrollTop = DOM.chatMessages.scrollHeight;
 }
-
 function renderProjectList() {
     if (!DOM.projectList) return;
     DOM.projectList.innerHTML = '';
@@ -211,7 +381,6 @@ function renderProjectList() {
         DOM.projectList.appendChild(listItem);
     });
 }
-
 function renderTeamList() {
     if (!DOM.teamList) return;
     DOM.teamList.innerHTML = '';
@@ -227,7 +396,6 @@ function renderTeamList() {
         DOM.teamList.appendChild(item);
     });
 }
-
 function renderChatMessage(message) {
     const isSelf = message.author.uid === appState.user.uid;
     const messageEl = document.createElement('div');
@@ -247,7 +415,6 @@ function renderChatMessage(message) {
     `;
     DOM.chatMessages.appendChild(messageEl);
 }
-
 async function handleSendMessage(e) {
     e.preventDefault();
     const text = DOM.chatInput.value.trim();
@@ -267,10 +434,9 @@ async function handleSendMessage(e) {
         showToast("Failed to send message.", "error");
     }
 }
-
 async function handleAddProject(e) {
     e.preventDefault();
-    const projectName = DOM.newProjectInput.value.trim();
+    const projectName = document.getElementById('new-project-input-chat').value.trim();
     if (!projectName || !appState.company || !appState.user) return;
 
     try {
@@ -279,149 +445,9 @@ async function handleAddProject(e) {
             companyId: appState.company.id,
         });
         showToast(`Chat room "${projectName}" created!`, 'success');
-        DOM.newProjectInput.value = '';
+        document.getElementById('new-project-input-chat').value = '';
     } catch (error) {
         console.error("Error adding project/chat room:", error);
         showToast("Failed to create new chat room.", 'error');
     }
-}
-
-async function handleJoinVoiceRoom(roomName, button) {
-    showToast(`Attempting to join voice room: ${roomName}...`, 'info');
-    
-    const uniqueRoomId = `${appState.company.id}_${roomName.replace(/\s+/g, '-')}`;
-    const voiceRoomRef = doc(db, 'voice_rooms', uniqueRoomId);
-    appState.voiceRoomRef = voiceRoomRef;
-
-    try {
-        const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        appState.localStream = localStream;
-
-        const onRoomUpdate = async (snapshot) => {
-            const data = snapshot.data();
-            const users = data ? data.users || [] : [];
-            const remoteUsers = users.filter(uid => uid !== appState.user.uid);
-            
-            appState.peerConnections.forEach((pc, uid) => {
-                if (!remoteUsers.includes(uid)) {
-                    pc.close();
-                    appState.peerConnections.delete(uid);
-                }
-            });
-
-            for (const remoteUserId of remoteUsers) {
-                if (!appState.peerConnections.has(remoteUserId)) {
-                    await startPeerConnection(remoteUserId, localStream, uniqueRoomId);
-                }
-            }
-        };
-
-        const unsubscribe = onSnapshot(voiceRoomRef, onRoomUpdate);
-        
-        await setDoc(voiceRoomRef, {
-            users: arrayUnion(appState.user.uid),
-            companyId: appState.company.id, // <-- Important for security rules
-            createdAt: serverTimestamp()
-        }, { merge: true });
-
-        button.textContent = 'Leave';
-        button.classList.add('active');
-        button.style.backgroundColor = 'var(--priority-high)';
-        showToast(`Joined voice room: ${roomName}!`, 'success');
-        
-    } catch (err) {
-        console.error("Failed to get audio stream:", err);
-        showToast("Microphone access denied. Please allow access to join.", "error");
-        button.textContent = 'Join';
-        button.classList.remove('active');
-        button.style.backgroundColor = 'var(--primary-color)';
-    }
-}
-
-async function startPeerConnection(remoteUserId, localStream, uniqueRoomId) {
-    const peerConnection = new RTCPeerConnection(servers);
-    appState.peerConnections.set(remoteUserId, peerConnection);
-    
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-    });
-    
-    peerConnection.ontrack = (event) => {
-        const remoteAudio = new Audio();
-        remoteAudio.srcObject = event.streams[0];
-        remoteAudio.autoplay = true;
-    };
-    
-    const candidatesCollection = collection(db, 'voice_rooms', uniqueRoomId, 'candidates');
-    
-    peerConnection.onicecandidate = async (event) => {
-        if (event.candidate) {
-            await addDoc(candidatesCollection, {
-                candidate: event.candidate.toJSON(),
-                sender: appState.user.uid,
-                receiver: remoteUserId,
-            });
-        }
-    };
-    
-    onSnapshot(query(candidatesCollection, where("receiver", "==", appState.user.uid)), (snapshot) => {
-        snapshot.docChanges().forEach(async (change) => {
-            if (change.type === 'added') {
-                try {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data().candidate));
-                } catch (e) {
-                    console.error("Error adding received ICE candidate:", e);
-                }
-            }
-        });
-    });
-
-    const offerDocRef = doc(db, 'voice_rooms', uniqueRoomId, 'offers', appState.user.uid);
-    const answerDocRef = doc(db, 'voice_rooms', uniqueRoomId, 'answers', remoteUserId);
-
-    onSnapshot(answerDocRef, async (snapshot) => {
-        if (snapshot.exists()) {
-            const answer = snapshot.data();
-            if (!peerConnection.currentRemoteDescription) {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-            }
-        }
-    });
-    
-    if (appState.peerConnections.size > 0) { // Only create offer if we are initiating
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-        await setDoc(offerDocRef, offer.toJSON());
-    }
-}
-
-async function handleLeaveVoiceRoom(roomName, button) {
-    if (appState.localStream) {
-        appState.localStream.getTracks().forEach(track => track.stop());
-        appState.localStream = null;
-    }
-
-    if (appState.voiceRoomRef) {
-        const roomDoc = await getDoc(appState.voiceRoomRef);
-        if(roomDoc.exists()){
-            const users = roomDoc.data().users || [];
-            const updatedUsers = users.filter(uid => uid !== appState.user.uid);
-            await updateDoc(appState.voiceRoomRef, { users: updatedUsers });
-
-            if(updatedUsers.length === 0) {
-                 await deleteDoc(appState.voiceRoomRef);
-            }
-        }
-    }
-
-    appState.peerConnections.forEach(pc => pc.close());
-    appState.peerConnections.clear();
-    appState.voiceRoomUsers.clear();
-    appState.voiceRoomRef = null;
-
-    showToast(`Left voice room: ${roomName}`, 'success');
-
-    button.textContent = 'Join';
-    button.classList.remove('active');
-    button.style.backgroundColor = 'var(--primary-color)';
 }
