@@ -81,6 +81,12 @@ export const getTasksAssignedToUser = async (userId) => {
     return tasks;
 };
 
+export const getTasksForProject = async (projectId) => {
+    const q = query(tasksCollection, where("projectId", "==", projectId));
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
 export const getUpcomingDeadlines = async (userId) => {
     const today = new Date();
     const nextWeek = new Date();
