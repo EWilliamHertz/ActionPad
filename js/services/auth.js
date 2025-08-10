@@ -9,9 +9,6 @@ import {
 import { setDoc, doc, deleteDoc, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { createNewCompany, joinCompanyWithReferralId } from './company.js';
 
-// Create a direct reference to the users collection
-const usersCol = collection(db, 'users');
-
 export const signIn = (email, password) => signInWithEmailAndPassword(auth, email, password);
 export const sendVerificationEmail = (user) => firebaseSendEmailVerification(user);
 export const sendPasswordReset = (email) => firebaseSendPasswordResetEmail(auth, email);
@@ -28,8 +25,7 @@ export const registerUser = async (userData) => {
     
     await sendVerificationEmail(user);
 
-    // Use the direct collection reference
-    await setDoc(doc(usersCol, user.uid), {
+    await setDoc(doc(collection(db, 'users'), user.uid), {
         fullName,
         nickname,
         email,
@@ -69,8 +65,7 @@ export const deleteUserAccount = async (password) => {
     const credential = EmailAuthProvider.credential(user.email, password);
     await reauthenticateWithCredential(user, credential);
 
-    // Use the direct collection reference
-    await deleteDoc(doc(usersCol, user.uid));
+    await deleteDoc(doc(collection(db, 'users'), user.uid));
 
     await deleteUser(user);
 };
