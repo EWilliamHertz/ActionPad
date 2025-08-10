@@ -9,7 +9,7 @@ import { listenToCompanyPresence } from './services/presence.js';
 import { listenToProjectChat, addChatMessage } from './services/chat.js';
 import { listenToCompanyTasks } from './services/task.js';
 import { showToast } from './toast.js';
-import { doc, collection, onSnapshot, updateDoc, arrayUnion, arrayRemove, setDoc, getDoc, deleteDoc, query, where, serverTimestamp, addDoc, writeBatch } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { doc, collection, onSnapshot, updateDoc, arrayUnion, arrayRemove, setDoc, getDoc, deleteDoc, query, where, serverTimestamp, addDoc, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 // --- STATE MANAGEMENT ---
 let appState = {
@@ -18,8 +18,10 @@ let appState = {
     listeners: {},
     localStream: null,
     peerConnections: new Map(),
-    candidateQueue: new Map(), // To prevent race conditions
+    candidateQueue: new Map(),
     currentVoiceRoom: null,
+    audioContexts: new Map(),
+    animationFrameIds: new Map(),
 };
 
 // --- DOM ELEMENTS ---
@@ -63,7 +65,7 @@ async function initialize() {
 
     const companyId = localStorage.getItem('selectedCompanyId');
     if (!companyId) {
-        window.location.replace('dashboard.html'); // FIX for redirect loop
+        window.location.replace('dashboard.html');
         return;
     }
     const companySnap = await getCompany(companyId);
@@ -90,6 +92,11 @@ function setupListeners() {
     appState.listeners.team = listenToCompanyPresence(appState.company.id, (team) => {
         appState.team = team;
         renderTeamList();
+        const voiceRoomsQuery = query(collection(db, 'voice_rooms'), where('companyId', '==', appState.company.id));
+        getDocs(voiceRoomsQuery).then(snapshot => {
+             const roomsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), name: doc.data().name || "Unknown Room" }));
+             renderVoiceRooms(roomsData);
+        });
     });
 
     const voiceRoomsQuery = query(collection(db, 'voice_rooms'), where('companyId', '==', appState.company.id));
@@ -146,7 +153,10 @@ function renderVoiceRooms(roomsData) {
                 const user = appState.team.find(m => m.id === uid);
                 if (!user) return '';
                 const avatarSrc = user.avatarURL || `https://placehold.co/28x28/E9ECEF/495057?text=${user.nickname.charAt(0).toUpperCase()}`;
-                return `<div class="avatar-small" title="${user.nickname}"><img src="${avatarSrc}" alt="${user.nickname}" style="width: 28px; height: 28px;"></div>`;
+                return `<div class="avatar-small" title="${user.nickname}" data-uid="${uid}">
+                            <img src="${avatarSrc}" alt="${user.nickname}" style="width: 28px; height: 28px;">
+                            <div class="speaking-indicator"></div>
+                        </div>`;
             }).join('');
             membersDiv.innerHTML = membersHtml;
         } else {
@@ -175,9 +185,10 @@ async function handleJoinVoiceRoom(roomName) {
         companyId: appState.company.id, 
         users: arrayUnion(appState.user.uid) 
     }, { merge: true });
-
+    
     appState.listeners.voiceRoomUsers = onSnapshot(roomRef, (doc) => {
         const users = doc.data()?.users || [];
+        renderVoiceRooms([{ id: uniqueId, ...doc.data() }]);
         const remoteUsers = users.filter(uid => uid !== appState.user.uid);
         
         for (const remoteId of remoteUsers) {
@@ -193,9 +204,12 @@ async function handleJoinVoiceRoom(roomName) {
                 const audioEl = remoteAudioStreams.get(remoteId);
                 if (audioEl) audioEl.remove();
                 remoteAudioStreams.delete(remoteId);
+                stopAudioMonitoring(remoteId);
             }
         });
-        renderVoiceRooms([{ id: uniqueId, ...doc.data() }]);
+        // After rendering, start local audio monitoring
+        const localAvatarIndicator = document.querySelector(`.voice-room-item[data-room-name="${roomName}"] .voice-room-members [data-uid="${appState.user.uid}"] .speaking-indicator`);
+        monitorAudioLevel(appState.localStream, appState.user.uid, localAvatarIndicator);
     });
 
     const signalingRef = collection(db, 'voice_rooms', uniqueId, 'signaling');
@@ -217,7 +231,6 @@ async function handleLeaveVoiceRoom() {
     const { uniqueId, name } = appState.currentVoiceRoom;
     const roomRef = doc(db, 'voice_rooms', uniqueId);
     
-    // Clean up all dynamic listeners related to the voice room
     Object.keys(appState.listeners).forEach(key => {
         if (key.startsWith('pc_') || key === 'signaling' || key === 'voiceRoomUsers') {
             if (appState.listeners[key]) appState.listeners[key]();
@@ -230,6 +243,10 @@ async function handleLeaveVoiceRoom() {
     remoteAudioStreams.forEach(audio => audio.remove());
     remoteAudioStreams.clear();
     appState.candidateQueue.clear();
+    appState.animationFrameIds.forEach(id => cancelAnimationFrame(id));
+    appState.animationFrameIds.clear();
+    appState.audioContexts.forEach(ctx => ctx.close());
+    appState.audioContexts.clear();
 
     if (appState.localStream) {
         appState.localStream.getTracks().forEach(track => track.stop());
@@ -266,6 +283,9 @@ async function createPeerConnection(remoteId, isInitiator = false) {
             audioEl.autoplay = true;
             document.body.appendChild(audioEl);
             remoteAudioStreams.set(remoteId, audioEl);
+            
+            const remoteAvatarIndicator = document.querySelector(`.voice-room-item[data-room-name="${appState.currentVoiceRoom.name}"] .voice-room-members [data-uid="${remoteId}"] .speaking-indicator`);
+            monitorAudioLevel(event.streams[0], remoteId, remoteAvatarIndicator);
         }
     };
     
@@ -327,6 +347,48 @@ async function handleSignalingMessage(data) {
     }
 }
 
+function monitorAudioLevel(stream, userId, uiElement) {
+    if (!stream || !uiElement || appState.audioContexts.has(userId)) return;
+
+    const audioContext = new AudioContext();
+    const analyser = audioContext.createAnalyser();
+    const source = audioContext.createMediaStreamSource(stream);
+    
+    source.connect(analyser);
+    analyser.fftSize = 512;
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    
+    appState.audioContexts.set(userId, audioContext);
+
+    const draw = () => {
+        const animationId = requestAnimationFrame(draw);
+        appState.animationFrameIds.set(userId, animationId);
+
+        analyser.getByteFrequencyData(dataArray);
+        let sum = dataArray.reduce((a, b) => a + b, 0);
+        let average = sum / bufferLength;
+
+        if (average > 20) { 
+            uiElement.classList.add('speaking');
+        } else {
+            uiElement.classList.remove('speaking');
+        }
+    };
+    draw();
+}
+
+function stopAudioMonitoring(userId) {
+    if (appState.animationFrameIds.has(userId)) {
+        cancelAnimationFrame(appState.animationFrameIds.get(userId));
+        appState.animationFrameIds.delete(userId);
+    }
+    if (appState.audioContexts.has(userId)) {
+        appState.audioContexts.get(userId).close();
+        appState.audioContexts.delete(userId);
+    }
+}
+
 function updateVoiceRoomUI() {
     DOM.voiceRoomList.querySelectorAll('.voice-room-item').forEach(el => {
         const roomName = el.dataset.roomName;
@@ -343,7 +405,6 @@ function updateVoiceRoomUI() {
     });
 }
 
-// --- Unchanged Functions ---
 function switchProject(projectId) {
     if (appState.listeners.chat) appState.listeners.chat();
     if (appState.listeners.tasks) appState.listeners.tasks();
@@ -431,6 +492,6 @@ async function handleAddProject(e) {
         document.getElementById('new-project-input-chat').value = '';
     } catch (error) {
         console.error("Error adding project/chat room:", error);
-        showToast("Failed to create new chat room.", "error");
+        showToast("Failed to create new chat room.", 'error');
     }
 }
