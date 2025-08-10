@@ -1,7 +1,7 @@
 // FILE: js/company-settings.js
 import { auth } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js';
-import { getCompany, listenToCompanyPresence, updateUserRole } from './services/company.js';
+import { getCompany, listenToCompanyPresence, updateUserRole, uploadCompanyLogo, updateCompany } from './services/company.js';
 import { getUserProfile } from './services/user.js';
 import { showToast } from './toast.js';
 
@@ -20,7 +20,6 @@ document.addEventListener('DOMContentLoaded', () => {
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             currentUser = user;
-            // Security check: Ensure the current user is an admin for this company.
             const profileSnap = await getUserProfile(user.uid);
             if (profileSnap.exists()) {
                 const profile = profileSnap.data();
@@ -42,15 +41,26 @@ async function initializePage() {
     try {
         const companySnap = await getCompany(companyId);
         if (companySnap.exists()) {
-            document.getElementById('company-name-header').textContent = `${companySnap.data().name} - Settings`;
+            const companyData = companySnap.data();
+            document.getElementById('company-name-header').textContent = `${companyData.name} - Settings`;
+            // NEW: Display existing company logo
+            const logoPreview = document.getElementById('company-logo-preview');
+            if (companyData.logoURL) {
+                logoPreview.src = companyData.logoURL;
+            }
         }
 
-        if (membersListener) membersListener(); // Unsubscribe from any previous listener
+        if (membersListener) membersListener();
         membersListener = listenToCompanyPresence(companyId, (members) => {
             renderMembersList(members);
         });
 
         document.getElementById('save-roles-button').addEventListener('click', handleSaveChanges);
+        // NEW: Event listeners for logo upload
+        document.getElementById('logo-upload-button').addEventListener('click', () => {
+            document.getElementById('logo-upload-input').click();
+        });
+        document.getElementById('logo-upload-input').addEventListener('change', handleLogoUpload);
 
     } catch (error) {
         console.error("Error initializing settings page:", error);
@@ -70,7 +80,6 @@ function renderMembersList(members) {
         item.className = 'member-role-item';
         item.dataset.userId = member.id;
 
-        // Store initial role to detect changes
         if (!initialRoles[member.id]) {
             initialRoles[member.id] = member.companyRole;
         }
@@ -110,7 +119,6 @@ async function handleSaveChanges() {
         const userId = item.dataset.userId;
         const newRole = item.querySelector('select').value;
         
-        // Only update if the role has changed
         if (initialRoles[userId] !== newRole) {
             promises.push(updateUserRole(companyId, userId, newRole));
         }
@@ -119,7 +127,6 @@ async function handleSaveChanges() {
     try {
         await Promise.all(promises);
         showToast("User roles updated successfully!", "success");
-        // Reset initial roles state after successful save
         initialRoles = {};
     } catch (error) {
         console.error("Error saving roles:", error);
@@ -127,5 +134,22 @@ async function handleSaveChanges() {
     } finally {
         saveButton.disabled = false;
         saveButton.textContent = 'Save Changes';
+    }
+}
+
+// NEW: Function to handle the logo file upload process
+async function handleLogoUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    showToast('Uploading logo...', 'success');
+    try {
+        const logoURL = await uploadCompanyLogo(companyId, file);
+        await updateCompany(companyId, { logoURL });
+        document.getElementById('company-logo-preview').src = logoURL;
+        showToast('Company logo updated!', 'success');
+    } catch (error) {
+        console.error("Logo upload failed:", error);
+        showToast('Logo upload failed.', 'error');
     }
 }
