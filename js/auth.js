@@ -108,7 +108,6 @@ async function handleRegistration(event) {
             <a href="login.html" class="success-button">Go to Login Page</a>
         `;
     } catch (error) {
-        // This will now log the full error from Firebase, including the index link
         console.error("Full Firebase Error:", error);
         
         let message;
@@ -116,6 +115,9 @@ async function handleRegistration(event) {
             message = getTranslatedString('emailInUse');
         } else if (error.code === 'failed-precondition') {
             message = getTranslatedString('requiredIndex');
+        } else if (error.message === "Invalid Referral ID. Company not found.") {
+            // IMPROVEMENT: Handle the specific error thrown from our service
+            message = "Invalid Referral ID. The company could not be found.";
         } else {
             message = getTranslatedString('genericError');
         }
