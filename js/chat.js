@@ -330,7 +330,7 @@ async function handleJoinVoiceRoom(roomName) {
         for (const change of snapshot.docChanges()) {
             const peerId = change.doc.id;
             if (peerId === appState.user.uid) continue;
-            if (change.type === 'added') createPeerConnection(peerId, roomName, true);
+            if (change.type === 'added') createPeerConnection(peerId, roomName);
             else if (change.type === 'removed') removeParticipant(peerId);
         }
         const localAvatar = document.querySelector(`#avatar-${appState.user.uid}`);
@@ -373,13 +373,17 @@ async function handleLeaveVoiceRoom() {
     updateVoiceRoomUI();
 }
 
-async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
+async function createPeerConnection(remoteUserId, roomId) {
     if (appState.peerConnections[remoteUserId]) return;
 
     const pc = new RTCPeerConnection(rtcConfiguration);
     appState.peerConnections[remoteUserId] = { pc, listener: null, iceCandidateQueue: [] };
     
-    // Add logging for connection states
+    // ** NEW: Politeness logic to prevent race conditions ("glare") **
+    // The user with the lexicographically smaller ID is the "impolite" one and will make the offer.
+    const isOffering = appState.user.uid < remoteUserId;
+    console.log(`Connecting to ${remoteUserId}. Am I the offerer? ${isOffering}`);
+
     pc.oniceconnectionstatechange = () => console.log(`ICE connection state for ${remoteUserId}: ${pc.iceConnectionState}`);
     pc.onconnectionstatechange = () => console.log(`Connection state for ${remoteUserId}: ${pc.connectionState}`);
     pc.onsignalingstatechange = () => console.log(`Signaling state for ${remoteUserId}: ${pc.signalingState}`);
@@ -404,43 +408,62 @@ async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
         snapshot.docChanges().forEach(async change => {
             if (change.type === 'added') {
                 const candidate = new RTCIceCandidate(change.doc.data());
-                if (pc.remoteDescription) {
-                    await pc.addIceCandidate(candidate);
-                } else {
-                    appState.peerConnections[remoteUserId].iceCandidateQueue.push(candidate);
+                try {
+                    if (pc.remoteDescription) {
+                        await pc.addIceCandidate(candidate);
+                    } else {
+                        appState.peerConnections[remoteUserId].iceCandidateQueue.push(candidate);
+                    }
+                } catch (error) {
+                    console.error(`Error adding ICE candidate for ${remoteUserId}:`, error);
                 }
             }
         });
     });
 
+    // This is the core negotiation logic
+    pc.onnegotiationneeded = async () => {
+        try {
+            if (isOffering) {
+                console.log(`Creating offer for ${remoteUserId}`);
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                await setDoc(localPeerRef, { offer: { type: offer.type, sdp: offer.sdp } }, { merge: true });
+            }
+        } catch (error) {
+            console.error(`Error in onnegotiationneeded for ${remoteUserId}:`, error);
+        }
+    };
+
     appState.peerConnections[remoteUserId].listener = onSnapshot(remotePeerRef, async (docSnapshot) => {
         const data = docSnapshot.data();
-        if (data && data.offer && pc.signalingState === 'stable') {
-            console.log(`Received offer from ${remoteUserId}, creating answer.`);
-            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-            
+        if (!data) return;
+
+        try {
+            if (data.offer && !isOffering) {
+                console.log(`Received offer from ${remoteUserId}, creating answer.`);
+                await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                await setDoc(localPeerRef, { answer: { type: answer.type, sdp: answer.sdp } }, { merge: true });
+            }
+
+            if (data.answer && isOffering) {
+                 console.log(`Received answer from ${remoteUserId}.`);
+                 await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+            }
+
+            // After setting remote description, process any queued candidates
             const queue = appState.peerConnections[remoteUserId].iceCandidateQueue;
-            while(queue.length > 0) await pc.addIceCandidate(queue.shift());
+            while(queue.length > 0) {
+                console.log(`Processing queued ICE candidate for ${remoteUserId}`);
+                await pc.addIceCandidate(queue.shift());
+            }
 
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            await updateDoc(localPeerRef, { answer: { type: answer.type, sdp: answer.sdp } });
-
-        } else if (data && data.answer && pc.signalingState === 'have-local-offer') {
-             console.log(`Received answer from ${remoteUserId}.`);
-             await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-             
-             const queue = appState.peerConnections[remoteUserId].iceCandidateQueue;
-             while(queue.length > 0) await pc.addIceCandidate(queue.shift());
+        } catch (error) {
+            console.error(`Error during signaling for ${remoteUserId}:`, error);
         }
     });
-
-    if (isOffering) {
-        console.log(`Creating offer for ${remoteUserId}`);
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        await updateDoc(localPeerRef, { offer: { type: offer.type, sdp: offer.sdp } });
-    }
 }
 
 // --- UI & UTILITY FUNCTIONS ---
