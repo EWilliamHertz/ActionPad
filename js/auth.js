@@ -1,5 +1,4 @@
 // FILE: js/auth.js
-// --- Import initialized Firebase services and SDK functions ---
 import { auth, db } from './firebase-config.js';
 import {
     signInWithEmailAndPassword,
@@ -9,32 +8,23 @@ import {
     sendPasswordResetEmail
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { doc, setDoc, getDoc, writeBatch, collection, query, where, getDocs, serverTimestamp, arrayUnion } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-
-// --- Import your UI and utility modules ---
 import { showToast } from './toast.js';
 import { initializeI18n, getTranslatedString } from './i18n.js';
 import { validateForm, setupLiveValidation } from './validation.js';
 
-
-// --- Main Setup ---
 document.addEventListener('DOMContentLoaded', () => {
     initializeI18n();
-
     // This listener handles redirection for ALREADY logged-in users visiting auth pages.
     onAuthStateChanged(auth, user => {
         if (user && user.emailVerified) {
-            // If user is on login/register page but is logged in, redirect them away.
             if (window.location.pathname.includes('login.html') || window.location.pathname.includes('register.html')) {
-                 window.location.replace('index.html');
+                window.location.replace('index.html');
             }
         }
     });
-
     setupFormHandlers();
 });
 
-
-// --- Form Handlers Setup ---
 function setupFormHandlers() {
     const loginForm = document.getElementById('login-form');
     const registerForm = document.getElementById('register-form');
@@ -60,16 +50,12 @@ function setupFormHandlers() {
             forgotPasswordForm.addEventListener('submit', handleForgotPassword);
        }
     }
-
     if (registerForm) {
         setupLiveValidation(registerForm);
         registerForm.addEventListener('submit', handleRegistration);
         setupReferralId(registerForm);
     }
 }
-
-
-// --- Logic Functions ---
 
 async function handleLogin(event) {
     event.preventDefault();
@@ -86,30 +72,23 @@ async function handleLogin(event) {
         const user = userCredential.user;
 
         if (!user.emailVerified) {
-            // Handle unverified user right on the login page
             const noticeDiv = document.getElementById('email-verification-notice');
             await handleUnverifiedUser(user, noticeDiv);
-            submitButton.disabled = false; // Re-enable button
+            submitButton.disabled = false;
             return;
         }
 
-        // ---- THE FIX: Post-login logic ----
-        // 1. Fetch user profile from Firestore
         const userProfileSnap = await getDoc(doc(db, 'users', user.uid));
-        if (!userProfileSnap.exists()) {
-            throw new Error("User profile does not exist.");
-        }
+        if (!userProfileSnap.exists()) throw new Error("User profile does not exist.");
+        
         const userProfile = userProfileSnap.data();
-
-        // 2. Find their first company
         const firstCompanyId = userProfile.companies?.[0]?.companyId;
+
         if (!firstCompanyId) {
-            // If they have no companies, send them to the dashboard to create/join one.
             window.location.replace('dashboard.html');
             return;
         }
 
-        // 3. Set the selected company in localStorage and go to the main app
         localStorage.setItem('selectedCompanyId', firstCompanyId);
         window.location.replace('index.html');
 
@@ -119,7 +98,6 @@ async function handleLogin(event) {
         submitButton.disabled = false;
     }
 }
-
 
 async function handleRegistration(event) {
     event.preventDefault();
@@ -150,7 +128,7 @@ async function handleRegistration(event) {
         if (userData.referralId) {
             finalRole = 'Member';
             const companiesRef = collection(db, "companies");
-            const q = query(companiesRef, where("referralId", "==", userData.referralId));
+            const q = query(companiesRef, where("referralId", "==", Number(userData.referralId)));
             const querySnapshot = await getDocs(q);
             if (querySnapshot.empty) throw new Error("Invalid Referral ID.");
             const companyDoc = querySnapshot.docs[0];
@@ -171,12 +149,8 @@ async function handleRegistration(event) {
         
         const userRef = doc(db, 'users', user.uid);
         batch.set(userRef, {
-            uid: user.uid,
-            email: userData.email,
-            fullName: userData.fullName,
-            nickname: userData.nickname,
-            avatarURL: '',
-            createdAt: serverTimestamp(),
+            uid: user.uid, email: userData.email, fullName: userData.fullName, nickname: userData.nickname,
+            avatarURL: '', createdAt: serverTimestamp(),
             companies: [{ companyId, role: finalRole }],
             companyIds: [companyId]
         });
@@ -184,14 +158,8 @@ async function handleRegistration(event) {
         await batch.commit();
         await sendEmailVerification(user);
 
-        // Show success message instead of redirecting
         const authBox = document.querySelector('.auth-box');
-        authBox.innerHTML = `
-            <h2 style="text-align: center;">Registration Successful!</h2>
-            <p style="text-align: center;">We've sent a verification link to <strong>${userData.email}</strong>.</p>
-            <p style="text-align: center;">Please check your inbox to activate your account, then you can log in.</p>
-            <a href="login.html" class="success-button">Go to Login Page</a>
-        `;
+        authBox.innerHTML = `<h2 style="text-align: center;">Registration Successful!</h2><p style="text-align: center;">We've sent a verification link to <strong>${userData.email}</strong>.</p><p style="text-align: center;">Please check your inbox to activate your account, then you can log in.</p><a href="login.html" class="success-button">Go to Login Page</a>`;
 
     } catch (error) {
         console.error("Registration Error:", error);
@@ -203,12 +171,9 @@ async function handleRegistration(event) {
 
 async function handleUnverifiedUser(user, noticeDiv) {
     if (!noticeDiv) return;
-    noticeDiv.innerHTML = `
-        <p>Your email is not verified. A new verification link has been sent to ${user.email}.</p>
-        <p>Please check your inbox (and spam folder).</p>
-    `;
+    noticeDiv.innerHTML = `<p>Your email is not verified. A new verification link has been sent to ${user.email}.</p>`;
     noticeDiv.classList.remove('hidden');
-    await sendEmailVerification(user); // Send email automatically
+    await sendEmailVerification(user);
 }
 
 async function handleForgotPassword(event) {
@@ -219,7 +184,7 @@ async function handleForgotPassword(event) {
         showToast('Password reset link sent! Check your email.', 'success');
         document.getElementById('forgot-password-modal').classList.add('hidden');
     } catch (error) {
-        showToast('Could not send reset email. Please check the address.', 'error');
+        showToast('Could not send reset email.', 'error');
     }
 }
 
