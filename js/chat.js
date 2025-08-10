@@ -39,7 +39,7 @@ const appState = {
     currentVoiceRoom: null,
     voiceRoomUnsubscribe: null, // Listener for peers in the current room
     voiceActivityDetectors: new Map(), // Stores { context, animationFrameId }
-    isAudioUnlocked: false, // NEW: Flag to track if user has interacted
+    isAudioUnlocked: false, // Flag to track if user has interacted
 };
 
 // --- DOM ELEMENTS ---
@@ -101,7 +101,7 @@ async function initialize() {
     setupUIEvents();
     setupListeners();
 
-    // NEW: Add the one-time click listener to unlock audio
+    // Add the one-time click listener to unlock audio
     document.body.addEventListener('click', unlockAllAudio, { once: true });
 }
 
@@ -293,18 +293,13 @@ async function handleSendMessage(e) {
 // --- VOICE CHAT (WebRTC) LOGIC ---
 // =================================================================
 
-// NEW: Function to unlock and play all audio streams
 function unlockAllAudio() {
     if (appState.isAudioUnlocked) return;
     console.log("Unlocking audio due to user interaction...");
     const audioElements = DOM.remoteAudioContainer.querySelectorAll('audio');
-    let playPromise;
     audioElements.forEach(audio => {
         audio.muted = false;
-        playPromise = audio.play();
-        if (playPromise !== undefined) {
-            playPromise.catch(error => console.error(`Could not play audio ${audio.id}:`, error));
-        }
+        audio.play().catch(error => console.error(`Could not play audio ${audio.id}:`, error));
     });
     appState.isAudioUnlocked = true;
     showToast("Audio enabled!", "success");
@@ -324,8 +319,7 @@ async function handleJoinVoiceRoom(roomName) {
     const roomRef = doc(db, 'rooms', roomName);
     const peersCollection = collection(roomRef, 'peers');
 
-    const selfRef = doc(peersCollection, appState.user.uid);
-    await setDoc(selfRef, {
+    await setDoc(doc(peersCollection, appState.user.uid), {
         id: appState.user.uid,
         nickname: appState.profile.nickname,
         joinedAt: serverTimestamp()
@@ -384,6 +378,11 @@ async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
 
     const pc = new RTCPeerConnection(rtcConfiguration);
     appState.peerConnections[remoteUserId] = { pc, listener: null, iceCandidateQueue: [] };
+    
+    // Add logging for connection states
+    pc.oniceconnectionstatechange = () => console.log(`ICE connection state for ${remoteUserId}: ${pc.iceConnectionState}`);
+    pc.onconnectionstatechange = () => console.log(`Connection state for ${remoteUserId}: ${pc.connectionState}`);
+    pc.onsignalingstatechange = () => console.log(`Signaling state for ${remoteUserId}: ${pc.signalingState}`);
 
     appState.localStream.getTracks().forEach(track => pc.addTrack(track, appState.localStream));
 
@@ -416,36 +415,31 @@ async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
 
     appState.peerConnections[remoteUserId].listener = onSnapshot(remotePeerRef, async (docSnapshot) => {
         const data = docSnapshot.data();
-        if (data) {
-            if (!pc.currentRemoteDescription && data.offer) {
-                const offer = new RTCSessionDescription(data.offer);
-                await pc.setRemoteDescription(offer);
-                
-                // Process queued candidates
-                const queue = appState.peerConnections[remoteUserId].iceCandidateQueue;
-                while(queue.length > 0) await pc.addIceCandidate(queue.shift());
+        if (data && data.offer && pc.signalingState === 'stable') {
+            console.log(`Received offer from ${remoteUserId}, creating answer.`);
+            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+            
+            const queue = appState.peerConnections[remoteUserId].iceCandidateQueue;
+            while(queue.length > 0) await pc.addIceCandidate(queue.shift());
 
-                const answerDescription = await pc.createAnswer();
-                await pc.setLocalDescription(answerDescription);
-                const answer = { type: answerDescription.type, sdp: answerDescription.sdp };
-                await updateDoc(localPeerRef, { answer });
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            await updateDoc(localPeerRef, { answer: { type: answer.type, sdp: answer.sdp } });
 
-            } else if (data.answer && pc.signalingState !== "stable") {
-                 const answer = new RTCSessionDescription(data.answer);
-                 await pc.setRemoteDescription(answer);
-
-                 // Process queued candidates
-                 const queue = appState.peerConnections[remoteUserId].iceCandidateQueue;
-                 while(queue.length > 0) await pc.addIceCandidate(queue.shift());
-            }
+        } else if (data && data.answer && pc.signalingState === 'have-local-offer') {
+             console.log(`Received answer from ${remoteUserId}.`);
+             await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+             
+             const queue = appState.peerConnections[remoteUserId].iceCandidateQueue;
+             while(queue.length > 0) await pc.addIceCandidate(queue.shift());
         }
     });
 
     if (isOffering) {
-        const offerDescription = await pc.createOffer();
-        await pc.setLocalDescription(offerDescription);
-        const offer = { sdp: offerDescription.sdp, type: offerDescription.type };
-        await updateDoc(localPeerRef, { offer });
+        console.log(`Creating offer for ${remoteUserId}`);
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await updateDoc(localPeerRef, { offer: { type: offer.type, sdp: offer.sdp } });
     }
 }
 
@@ -474,16 +468,12 @@ function addRemoteAudio(peerId, stream) {
     audio.id = `audio-${peerId}`;
     audio.srcObject = stream;
     audio.playsInline = true; 
-    
-    // NEW: Initially mute the audio. It will be unmuted on user interaction.
-    audio.muted = true; 
     audio.autoplay = true;
+    audio.muted = !appState.isAudioUnlocked; 
 
     DOM.remoteAudioContainer.appendChild(audio);
 
-    // If audio is already unlocked, play immediately. Otherwise, it will be handled by unlockAllAudio.
     if (appState.isAudioUnlocked) {
-        audio.muted = false;
         audio.play().catch(error => console.error(`Error playing immediate audio for peer ${peerId}:`, error));
     }
 
