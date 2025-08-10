@@ -1,8 +1,8 @@
 // FILE: js/dashboard.js
 import { auth } from './firebase-config.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js';
-import { 
-    getUserProfile, 
+import {
+    getUserProfile,
     getCompanyDashboardData,
     signOut,
     joinCompanyWithReferralId,
@@ -16,36 +16,27 @@ let taskStatusChart = null; // Variable to hold the chart instance
 
 const getUserProfileWithRetry = async (userId, retries = 3, delay = 1000) => {
     for (let i = 0; i < retries; i++) {
-        try {
-            const profileSnap = await getUserProfile(userId);
-            if (profileSnap.exists() && profileSnap.data().companies) {
-                return profileSnap;
-            }
-            console.warn(`Attempt ${i + 1}: User profile not ready, retrying...`);
-            await new Promise(res => setTimeout(res, delay));
-        } catch (error) {
-            console.error(`Error fetching profile on attempt ${i + 1}:`, error);
+        const profileSnap = await getUserProfile(userId);
+        if (profileSnap.exists() && profileSnap.data().companies) {
+            return profileSnap;
         }
+        await new Promise(res => setTimeout(res, delay));
     }
-    return getUserProfile(userId); // Return the last attempt
+    return getUserProfile(userId);
 };
 
 
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         currentUser = user;
-        try {
-            const profileSnap = await getUserProfileWithRetry(user.uid); 
-            if (profileSnap.exists()) {
-                const profile = profileSnap.data();
-                updateUserInfo(profile);
-                renderCompanyCards(profile.companies || []);
-                renderDashboardWidgets(user.uid, profile.companyIds || []);
-            } else {
-                 throw new Error("Could not load your user profile after multiple attempts.");
-            }
-        } catch (error) {
-            showToast(error.message, "error");
+        const profileSnap = await getUserProfileWithRetry(user.uid);
+        if (profileSnap.exists()) {
+            const profile = profileSnap.data();
+            updateUserInfo(profile);
+            renderCompanyCards(profile.companies || []);
+            renderDashboardWidgets(user.uid, profile.companyIds || []);
+        } else {
+            showToast("Could not load your user profile.", "error");
             renderCompanyCards([]);
         }
     } else {
@@ -67,8 +58,8 @@ async function renderCompanyCards(companyMemberships) {
     const container = document.getElementById('company-cards-container');
     container.innerHTML = '<div class="skeleton-card"></div><div class="skeleton-card"></div>';
 
-    if (!companyMemberships || companyMemberships.length === 0) {
-        container.innerHTML = '<h3>Welcome!</h3><p>You are not a member of any company yet. Join or create one below to get started.</p>';
+    if (companyMemberships.length === 0) {
+        container.innerHTML = '<p>You are not a member of any company yet.</p>';
         return;
     }
 
@@ -76,7 +67,7 @@ async function renderCompanyCards(companyMemberships) {
         const cardPromises = companyMemberships.map(membership => getCompanyDashboardData(membership.companyId));
         const companiesData = await Promise.all(cardPromises);
 
-        container.innerHTML = ''; 
+        container.innerHTML = '';
 
         companiesData.forEach((data, index) => {
             if (data.company) {
@@ -87,12 +78,8 @@ async function renderCompanyCards(companyMemberships) {
         });
     } catch (error) {
         console.error("Failed to render company cards:", error);
-        const errorMessage = (error.code === 'permission-denied')
-            ? "A permission error occurred. Please ensure your Firestore security rules are deployed correctly and you have created the required database indexes."
-            : "An error occurred while loading company data. Please try refreshing the page.";
-        
-        container.innerHTML = `<p class="error">${errorMessage}</p>`;
-        showToast(errorMessage, "error");
+        container.innerHTML = `<p class="error">An error occurred while loading company data. Please check the console and try refreshing the page.</p>`;
+        showToast("Error loading company data. You may need to create a database index.", "error");
     }
 }
 
@@ -150,7 +137,9 @@ function createCompanyCard(data, membership) {
         </div>
     `;
 
+    // THIS IS THE FIX:
     card.querySelector('.switch-company-btn').addEventListener('click', () => {
+        // We MUST set the item in localStorage BEFORE redirecting.
         localStorage.setItem('selectedCompanyId', membership.companyId);
         window.location.href = 'index.html';
     });
@@ -173,43 +162,32 @@ async function renderDashboardWidgets(userId, companyIds) {
     const upcomingDeadlinesContainer = document.getElementById('upcoming-deadlines-widget');
     upcomingDeadlinesContainer.innerHTML = '<h4>Upcoming Deadlines</h4><div class="skeleton-widget-item"></div><div class="skeleton-widget-item"></div>';
     
-    try {
-        const deadlines = await getUpcomingDeadlines(userId);
-        upcomingDeadlinesContainer.innerHTML = '<h4>Upcoming Deadlines</h4>';
-        if(deadlines.length > 0) {
-            const list = document.createElement('ul');
-            list.className = 'widget-list';
-            deadlines.forEach(task => {
-                const item = document.createElement('li');
-                item.innerHTML = `<strong>${task.name}</strong> - ${new Date(task.dueDate).toLocaleDateString()}`;
-                list.appendChild(item);
-            });
-            upcomingDeadlinesContainer.appendChild(list);
-        } else {
-            upcomingDeadlinesContainer.innerHTML += '<p>No upcoming deadlines in the next 7 days.</p>';
-        }
-    } catch(e) {
-        console.error("Could not render deadlines widget", e);
-        upcomingDeadlinesContainer.innerHTML += '<p class="error">Could not load deadlines.</p>';
+    const deadlines = await getUpcomingDeadlines(userId);
+    upcomingDeadlinesContainer.innerHTML = '<h4>Upcoming Deadlines</h4>';
+    if(deadlines.length > 0) {
+        const list = document.createElement('ul');
+        list.className = 'widget-list';
+        deadlines.forEach(task => {
+            const item = document.createElement('li');
+            item.innerHTML = `<strong>${task.name}</strong> - ${new Date(task.dueDate).toLocaleDateString()}`;
+            list.appendChild(item);
+        });
+        upcomingDeadlinesContainer.appendChild(list);
+    } else {
+        upcomingDeadlinesContainer.innerHTML += '<p>No upcoming deadlines in the next 7 days.</p>';
     }
-
 
     // Task Status Chart Widget
-    try {
-        const allTasks = [];
-        for (const id of companyIds) {
-            const data = await getCompanyDashboardData(id);
-            allTasks.push(...data.tasks);
-        }
-        renderTaskStatusChart(allTasks);
-    } catch(e) {
-        console.error("Could not render task status chart", e);
+    const allTasks = [];
+    for (const id of companyIds) {
+        const data = await getCompanyDashboardData(id);
+        allTasks.push(...data.tasks);
     }
+    renderTaskStatusChart(allTasks);
 }
 
 function renderTaskStatusChart(tasks) {
-    const ctx = document.getElementById('task-status-chart')?.getContext('2d');
-    if (!ctx) return;
+    const ctx = document.getElementById('task-status-chart').getContext('2d');
     
     const statusCounts = tasks.reduce((acc, task) => {
         const status = task.status || 'todo';
@@ -272,9 +250,8 @@ document.querySelectorAll('.modal-close').forEach(btn => {
 document.getElementById('join-company-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const referralId = document.getElementById('join-referral-id').value;
-    const userRole = document.getElementById('join-company-role').value; // In a real app, role might not be user-set
     try {
-        await joinCompanyWithReferralId(currentUser, referralId, userRole);
+        await joinCompanyWithReferralId(currentUser, referralId);
         showToast('Successfully joined company!', 'success');
         location.reload(); 
     } catch (error) {
@@ -294,6 +271,5 @@ document.getElementById('create-company-form').addEventListener('submit', async 
         showToast(error.message, 'error');
     }
 });
-
 
 document.getElementById('logout-button').addEventListener('click', signOut);
