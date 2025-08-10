@@ -4,7 +4,7 @@ import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.1.0/fi
 import { signOut } from './services/auth.js';
 import { getUserProfile } from './services/user.js';
 import { getCompany } from './services/company.js';
-import { listenToCompanyProjects } from './services/project.js';
+import { listenToCompanyProjects, addProject } from './services/project.js';
 import { listenToCompanyPresence } from './services/presence.js';
 import { listenToProjectChat, addChatMessage } from './services/chat.js';
 import { listenToCompanyTasks } from './services/task.js';
@@ -32,6 +32,8 @@ const DOM = {
     chatInput: document.getElementById('chat-input'),
     pageContainer: document.getElementById('chat-page-container'),
     chatHeader: document.getElementById('chat-header'),
+    addProjectForm: document.getElementById('add-project-form-chat'),
+    newProjectInput: document.getElementById('new-project-input-chat'),
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -58,7 +60,7 @@ async function initialize() {
     // Fetch user profile and company
     const profileSnap = await getUserProfile(appState.user.uid);
     if (!profileSnap.exists()) {
-        throw new Error("User profile not found.");
+        throw new Error("User profile not found. Please log out and back in on the dashboard page.");
     }
     appState.profile = { uid: appState.user.uid, ...profileSnap.data() };
 
@@ -115,6 +117,7 @@ function setupUIEvents() {
     });
 
     DOM.chatForm.addEventListener('submit', handleSendMessage);
+    DOM.addProjectForm.addEventListener('submit', handleAddProject);
 }
 
 function switchProject(projectId) {
@@ -247,5 +250,24 @@ async function handleSendMessage(e) {
     } catch (error) {
         console.error("Error sending message:", error);
         showToast("Failed to send message.", "error");
+    }
+}
+
+async function handleAddProject(e) {
+    e.preventDefault();
+    const projectName = DOM.newProjectInput.value.trim();
+    if (!projectName || !appState.company || !appState.user) return;
+
+    try {
+        await addProject({
+            name: projectName,
+            companyId: appState.company.id,
+            createdAt: new Date().toISOString()
+        });
+        showToast(`Chat room "${projectName}" created!`, 'success');
+        DOM.newProjectInput.value = '';
+    } catch (error) {
+        console.error("Error adding project/chat room:", error);
+        showToast("Failed to create new chat room.", 'error');
     }
 }
