@@ -11,7 +11,7 @@ import { listenToCompanyTasks } from './services/task.js';
 import { showToast } from './toast.js';
 
 // Import necessary Firestore functions for signaling
-import { doc, getDoc, setDoc, onSnapshot, updateDoc, arrayUnion, collection, query, where, orderBy, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { doc, getDoc, setDoc, onSnapshot, updateDoc, arrayUnion, collection, query, where, orderBy, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 let appState = {
     user: null,
@@ -277,7 +277,6 @@ async function handleAddProject(e) {
         await addProject({
             name: projectName,
             companyId: appState.company.id,
-            createdAt: new Date().toISOString()
         });
         showToast(`Chat room "${projectName}" created!`, 'success');
         DOM.newProjectInput.value = '';
@@ -290,7 +289,8 @@ async function handleAddProject(e) {
 async function handleJoinVoiceRoom(roomName, button) {
     showToast(`Attempting to join voice room: ${roomName}...`, 'info');
     
-    const voiceRoomRef = doc(db, 'voice_rooms', roomName);
+    const uniqueRoomId = `${appState.company.id}_${roomName.replace(/\s+/g, '-')}`;
+    const voiceRoomRef = doc(db, 'voice_rooms', uniqueRoomId);
     appState.voiceRoomRef = voiceRoomRef;
 
     try {
@@ -302,7 +302,6 @@ async function handleJoinVoiceRoom(roomName, button) {
             const users = data ? data.users || [] : [];
             const remoteUsers = users.filter(uid => uid !== appState.user.uid);
             
-            // Clean up connections for users who left
             appState.peerConnections.forEach((pc, uid) => {
                 if (!remoteUsers.includes(uid)) {
                     pc.close();
@@ -310,10 +309,9 @@ async function handleJoinVoiceRoom(roomName, button) {
                 }
             });
 
-            // Start connections for new users
             for (const remoteUserId of remoteUsers) {
                 if (!appState.peerConnections.has(remoteUserId)) {
-                    await startPeerConnection(remoteUserId, localStream, roomName);
+                    await startPeerConnection(remoteUserId, localStream, uniqueRoomId);
                 }
             }
         };
@@ -322,7 +320,8 @@ async function handleJoinVoiceRoom(roomName, button) {
         
         await setDoc(voiceRoomRef, {
             users: arrayUnion(appState.user.uid),
-            createdAt: new Date()
+            companyId: appState.company.id, // <-- Important for security rules
+            createdAt: serverTimestamp()
         }, { merge: true });
 
         button.textContent = 'Leave';
@@ -339,7 +338,7 @@ async function handleJoinVoiceRoom(roomName, button) {
     }
 }
 
-async function startPeerConnection(remoteUserId, localStream, roomName) {
+async function startPeerConnection(remoteUserId, localStream, uniqueRoomId) {
     const peerConnection = new RTCPeerConnection(servers);
     appState.peerConnections.set(remoteUserId, peerConnection);
     
@@ -353,7 +352,7 @@ async function startPeerConnection(remoteUserId, localStream, roomName) {
         remoteAudio.autoplay = true;
     };
     
-    const candidatesCollection = collection(db, 'voice_rooms', roomName, 'candidates');
+    const candidatesCollection = collection(db, 'voice_rooms', uniqueRoomId, 'candidates');
     
     peerConnection.onicecandidate = async (event) => {
         if (event.candidate) {
@@ -365,12 +364,11 @@ async function startPeerConnection(remoteUserId, localStream, roomName) {
         }
     };
     
-    onSnapshot(candidatesCollection, (snapshot) => {
+    onSnapshot(query(candidatesCollection, where("receiver", "==", appState.user.uid)), (snapshot) => {
         snapshot.docChanges().forEach(async (change) => {
-            const data = change.doc.data();
-            if (change.type === 'added' && data.receiver === appState.user.uid) {
+            if (change.type === 'added') {
                 try {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data().candidate));
                 } catch (e) {
                     console.error("Error adding received ICE candidate:", e);
                 }
@@ -378,30 +376,23 @@ async function startPeerConnection(remoteUserId, localStream, roomName) {
         });
     });
 
-    const offerDocRef = doc(db, 'voice_rooms', roomName, 'offers', remoteUserId);
-    const answerDocRef = doc(db, 'voice_rooms', roomName, 'answers', remoteUserId);
-    
-    onSnapshot(offerDocRef, async (snapshot) => {
-        const offer = snapshot.data();
-        if (offer) {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            await setDoc(answerDocRef, answer.toJSON());
-        }
-    });
+    const offerDocRef = doc(db, 'voice_rooms', uniqueRoomId, 'offers', appState.user.uid);
+    const answerDocRef = doc(db, 'voice_rooms', uniqueRoomId, 'answers', remoteUserId);
 
     onSnapshot(answerDocRef, async (snapshot) => {
-        const answer = snapshot.data();
-        if (answer) {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        if (snapshot.exists()) {
+            const answer = snapshot.data();
+            if (!peerConnection.currentRemoteDescription) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+            }
         }
     });
-
-    // Create a new offer for this remote peer
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    await setDoc(doc(db, 'voice_rooms', roomName, 'offers', appState.user.uid), offer.toJSON());
+    
+    if (appState.peerConnections.size > 0) { // Only create offer if we are initiating
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        await setDoc(offerDocRef, offer.toJSON());
+    }
 }
 
 async function handleLeaveVoiceRoom(roomName, button) {
@@ -413,12 +404,12 @@ async function handleLeaveVoiceRoom(roomName, button) {
     if (appState.voiceRoomRef) {
         const roomDoc = await getDoc(appState.voiceRoomRef);
         if(roomDoc.exists()){
-            const users = roomDoc.data().users;
+            const users = roomDoc.data().users || [];
             const updatedUsers = users.filter(uid => uid !== appState.user.uid);
             await updateDoc(appState.voiceRoomRef, { users: updatedUsers });
 
             if(updatedUsers.length === 0) {
-                await deleteDoc(appState.voiceRoomRef);
+                 await deleteDoc(appState.voiceRoomRef);
             }
         }
     }
@@ -426,6 +417,7 @@ async function handleLeaveVoiceRoom(roomName, button) {
     appState.peerConnections.forEach(pc => pc.close());
     appState.peerConnections.clear();
     appState.voiceRoomUsers.clear();
+    appState.voiceRoomRef = null;
 
     showToast(`Left voice room: ${roomName}`, 'success');
 
