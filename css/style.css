@@ -728,3 +728,45 @@ main { padding: 2rem; overflow-y: auto; }
         opacity: 0.7;
     }
 }
+
+.voice-room-members {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 10px;
+    margin-top: 5px;
+    border-top: 1px solid #f1f3f5;
+}
+
+.avatar-small {
+    position: relative;
+    width: 32px;
+    height: 32px;
+}
+
+.avatar-small img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    transition: border 0.2s, box-shadow 0.2s;
+}
+
+/* This is the "green aura" effect for when a user is speaking */
+.avatar-small.speaking img {
+    border: 2px solid #4caf50;
+    box-shadow: 0 0 10px 2px rgba(76, 175, 80, 0.7);
+    animation: pulse-border 1.5s infinite;
+}
+
+@keyframes pulse-border {
+    0% {
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 8px rgba(76, 175, 80, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+    }
+}
