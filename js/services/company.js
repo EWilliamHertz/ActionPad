@@ -3,14 +3,12 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gsta
 import { db, storage } from '../firebase-config.js';
 import { listenToCompanyPresence as originalListen } from './presence.js';
 
-// Create direct references to collections
-const companiesCol = collection(db, 'companies');
-const usersCol = collection(db, 'users');
-
-export const getCompany = (companyId) => getDoc(doc(companiesCol, companyId));
+export const getCompany = (companyId) => {
+    return getDoc(doc(collection(db, 'companies'), companyId));
+}
 
 export const createNewCompany = async (user, companyName, userRole) => {
-    const newCompanyRef = await addDoc(companiesCol, {
+    const newCompanyRef = await addDoc(collection(db, 'companies'), {
         name: companyName,
         ownerId: user.uid,
         members: [user.uid],
@@ -18,7 +16,7 @@ export const createNewCompany = async (user, companyName, userRole) => {
         createdAt: serverTimestamp()
     });
     const companyId = newCompanyRef.id;
-    const userRef = doc(usersCol, user.uid);
+    const userRef = doc(collection(db, 'users'), user.uid);
 
     await updateDoc(userRef, {
         companies: arrayUnion({
@@ -31,7 +29,7 @@ export const createNewCompany = async (user, companyName, userRole) => {
 };
 
 export const joinCompanyWithReferralId = async (user, referralId, role) => {
-    const q = query(companiesCol, where("referralId", "==", Number(referralId)));
+    const q = query(collection(db, 'companies'), where("referralId", "==", Number(referralId)));
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
@@ -40,7 +38,7 @@ export const joinCompanyWithReferralId = async (user, referralId, role) => {
 
     const companyDoc = querySnapshot.docs[0];
     const companyId = companyDoc.id;
-    const userRef = doc(usersCol, user.uid);
+    const userRef = doc(collection(db, 'users'), user.uid);
 
     await updateDoc(companyDoc.ref, {
         members: arrayUnion(user.uid)
@@ -57,7 +55,7 @@ export const joinCompanyWithReferralId = async (user, referralId, role) => {
 };
 
 export const updateUserRole = async (companyId, userId, newRole) => {
-    const userRef = doc(usersCol, userId);
+    const userRef = doc(collection(db, 'users'), userId);
     const userSnap = await getDoc(userRef);
 
     if (userSnap.exists()) {
@@ -75,7 +73,9 @@ export const updateUserRole = async (companyId, userId, newRole) => {
     }
 };
 
-export const updateCompany = (companyId, data) => updateDoc(doc(companiesCol, companyId), data);
+export const updateCompany = (companyId, data) => {
+    return updateDoc(doc(collection(db, 'companies'), companyId), data);
+}
 
 export const uploadCompanyLogo = async (companyId, file) => {
     const filePath = `company_logos/${companyId}/${file.name}`;
