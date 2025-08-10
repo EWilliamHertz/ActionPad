@@ -1,6 +1,6 @@
 // FILE: js/app.js
 import { auth, db, storage } from './firebase-config.js';
-import { onAuthStateChanged, signOut as firebaseSignOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
     doc,
     getDoc,
@@ -15,16 +15,20 @@ import {
     uploadBytes,
     getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+
+// Import services
 import { initializeI18n } from './i18n.js';
 import * as UImanager from './ui/uiManager.js';
 import * as taskController from './taskController.js';
 import { initCommandPalette } from './ui/commandPalette.js';
 import { showToast } from './toast.js';
+import { signOut } from './services/auth.js';
+import { getUserProfile } from './services/user.js';
+import { getCompany } from './services/company.js';
+import { listenToCompanyProjects, updateProject } from './services/project.js';
+import { listenToCompanyPresence } from './services/presence.js';
+import { listenToCompanyTasks } from './services/task.js';
 
-console.log("App.js loaded, checking imports...");
-console.log("Auth:", auth);
-console.log("DB:", db);
-console.log("Storage:", storage);
 
 const appState = {
     user: null, profile: null, company: null, team: [], projects: [], tasks: [],
@@ -47,7 +51,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (companyIdToLoad) {
                 initialize(companyIdToLoad);
             } else {
-                // This is the safety net for private Browse
                 window.location.replace('dashboard.html');
             }
         } else if (!user) {
@@ -58,23 +61,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function initialize(companyId) {
     try {
-        console.log("Starting initialization with companyId:", companyId);
-        
-        const profileSnap = await getDoc(doc(db, 'users', appState.user.uid));
+        const profileSnap = await getUserProfile(companyId);
         if (!profileSnap.exists()) throw new Error("User profile not found.");
-        console.log("Profile loaded successfully");
 
         const fullProfile = profileSnap.data();
         const companyMembership = fullProfile.companies.find(c => c.companyId === companyId);
         
-        // Safety check: if stored company is invalid, go back to dashboard
         if (!companyMembership) {
-            console.log("Company membership not found, redirecting to dashboard");
             localStorage.removeItem('selectedCompanyId');
             window.location.replace('dashboard.html');
             return;
         }
-        console.log("Company membership found:", companyMembership);
 
         appState.profile = {
             uid: appState.user.uid,
@@ -82,24 +79,19 @@ async function initialize(companyId) {
             companyRole: companyMembership.role
         };
 
-        const companySnap = await getDoc(doc(db, 'companies', companyId));
+        const companySnap = await getCompany(companyId);
         if (!companySnap.exists()) throw new Error("Company data not found.");
         appState.company = { id: companySnap.id, ...companySnap.data() };
-        console.log("Company data loaded:", appState.company);
 
-        console.log("Initializing controllers and UI...");
         taskController.initTaskController(appState);
         UImanager.initUIManager(appState);
         UImanager.initModalManager(appState);
         initCommandPalette(appState, { openModal: UImanager.openModal, switchProject });
 
-        console.log("Setting up UI and listeners...");
         setupUI();
         setupListeners();
 
-        console.log("Making app container visible...");
         document.getElementById('app-container').classList.remove('hidden');
-        console.log("Initialization completed successfully!");
 
     } catch (error) {
         console.error("CRITICAL INITIALIZATION FAILURE:", error);
@@ -110,44 +102,28 @@ async function initialize(companyId) {
 }
 
 function setupListeners() {
-    console.log("Setting up Firebase listeners...");
-    console.log("DB object in setupListeners:", db);
     if (appState.projectsListener) appState.projectsListener();
     if (appState.presenceListener) appState.presenceListener();
 
-    console.log("Creating projects query for company:", appState.company.id);
-    console.log("About to call collection(db, 'projects') with db:", db);
-    const projectsQuery = query(collection(db, 'projects'), where("companyId", "==", appState.company.id));
-    appState.projectsListener = onSnapshot(projectsQuery, (snapshot) => {
-        console.log("Projects snapshot received, docs count:", snapshot.docs.length);
-        appState.projects = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    appState.projectsListener = listenToCompanyProjects(appState.company.id, (projects) => {
+        appState.projects = projects;
         UImanager.renderProjectList(appState.projects, appState.currentProjectId);
         if (appState.currentProjectId !== 'all') {
             const updatedProject = appState.projects.find(p => p.id === appState.currentProjectId);
             if (updatedProject) UImanager.updateProjectHeader(updatedProject);
         }
-    }, (error) => {
-        console.error("Projects listener error:", error);
     });
 
-    console.log("Creating users query for company:", appState.company.id);
-    console.log("About to call collection(db, 'users') with db:", db);
-    const usersQuery = query(collection(db, 'users'), where("companyIds", "array-contains", appState.company.id));
-    appState.presenceListener = onSnapshot(usersQuery, (snapshot) => {
-        console.log("Users snapshot received, docs count:", snapshot.docs.length);
-        appState.team = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    appState.presenceListener = listenToCompanyPresence(appState.company.id, (team) => {
+        appState.team = team;
         UImanager.renderTeamList(appState.team, appState.user.uid);
-        populateAssigneeFilter(appState.team);
-    }, (error) => {
-        console.error("Users listener error:", error);
+        populateAssigneeFilter(team);
     });
 
-    console.log("Switching to project 'all'...");
     switchProject('all');
 }
 
 function switchProject(projectId) {
-    console.log("Switching to project:", projectId);
     appState.currentProjectId = projectId;
     if (appState.tasksListener) appState.tasksListener();
 
@@ -158,18 +134,10 @@ function switchProject(projectId) {
         const project = appState.projects.find(p => p.id === projectId);
         if (project) UImanager.updateProjectHeader(project);
     }
-
-    console.log("Creating tasks query for company:", appState.company.id, "project:", projectId);
-    let tasksQuery;
-    const baseTasksQuery = query(collection(db, 'tasks'), where("companyId", "==", appState.company.id));
-    tasksQuery = (projectId === 'all') ? baseTasksQuery : query(baseTasksQuery, where("projectId", "==", projectId));
     
-    appState.tasksListener = onSnapshot(tasksQuery, (snapshot) => {
-        console.log("Tasks snapshot received, docs count:", snapshot.docs.length);
-        appState.tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    appState.tasksListener = listenToCompanyTasks(appState.company.id, projectId, (tasks) => {
+        appState.tasks = tasks;
         renderFilteredTasks();
-    }, (error) => {
-        console.error("Tasks listener error:", error);
     });
 }
 
@@ -204,7 +172,7 @@ function setupUI() {
 
     document.getElementById('logout-button').addEventListener('click', () => {
         localStorage.removeItem('selectedCompanyId');
-        firebaseSignOut(auth);
+        signOut();
     });
 
     document.getElementById('view-switcher').addEventListener('click', (e) => {
@@ -240,8 +208,8 @@ function setupUI() {
 
     document.getElementById('share-invite-button').addEventListener('click', () => {
         const inviteLink = `${window.location.origin}/register.html?ref=${appState.company.referralId}`;
-        UImanager.openModal(UImanager.DOM.inviteModal);
         document.getElementById('invite-link-input').value = inviteLink;
+        UImanager.openModal(document.getElementById('invite-modal'));
     });
 
     taskController.setupProjectForm(appState);
@@ -270,7 +238,7 @@ async function handleLogoUpload(e) {
         const fileRef = storageRef(storage, filePath);
         await uploadBytes(fileRef, file);
         const logoURL = await getDownloadURL(fileRef);
-        await updateDoc(doc(db, 'projects', appState.currentProjectId), { logoURL });
+        await updateProject(appState.currentProjectId, { logoURL });
         showToast('Logo updated!', 'success');
     } catch (error) {
         console.error("Logo upload failed:", error);
