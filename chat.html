@@ -23,7 +23,39 @@
             flex-shrink: 0;
             overflow-y: auto;
         }
+        
+        .chat-sidebar-header {
+            padding: 1rem;
+            border-bottom: 1px solid #E9ECEF;
+        }
 
+        .chat-sidebar .project-item-chat {
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            border-bottom: 1px solid #F1F3F5;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .chat-sidebar .project-item-chat:hover {
+            background-color: #F8F9FA;
+        }
+
+        .chat-sidebar .project-item-chat.active {
+            background-color: #E9ECEF;
+            border-left: 3px solid var(--primary-color);
+            padding-left: calc(1rem - 3px);
+            font-weight: 600;
+        }
+
+        .chat-sidebar-create-chat {
+            padding: 1rem;
+            border-top: 1px solid #E9ECEF;
+        }
+        
         .chat-main {
             flex-grow: 1;
             display: flex;
@@ -158,44 +190,22 @@
             background-color: #357ABD;
         }
 
-        .chat-sidebar-header {
-            padding: 1rem;
-            border-bottom: 1px solid #E9ECEF;
-        }
-
-        .project-list-chat .project-item-chat {
-            padding: 0.75rem 1rem;
-            cursor: pointer;
-            transition: background-color 0.2s;
-            border-bottom: 1px solid #F1F3F5;
+        .back-link {
+            color: #6C757D;
+            text-decoration: none;
             font-weight: 500;
-        }
-
-        .project-list-chat .project-item-chat:hover {
-            background-color: #F8F9FA;
-        }
-
-        .project-list-chat .project-item-chat.active {
-            background-color: #E9ECEF;
-            border-left: 3px solid var(--primary-color);
-            padding-left: calc(1rem - 3px);
-            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
         
         .chat-tasks-message {
             background-color: #E6F2FF;
-            border-left: 4px solid var(--primary-color);
             padding: 1rem;
-            margin-bottom: 1rem;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .chat-tasks-message.done {
-            background-color: #e8f5e9;
-            border-left-color: var(--priority-low);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: #212529;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.05);
         }
 
         .chat-tasks-message h4 {
@@ -203,23 +213,6 @@
             font-weight: 600;
         }
 
-        .chat-tasks-message p {
-            margin: 0;
-            font-size: 0.9rem;
-            color: var(--subtle-text-color);
-        }
-
-        .chat-tasks-message.done h4 {
-            text-decoration: line-through;
-            color: var(--subtle-text-color);
-        }
-
-        .chat-tasks-message .task-status-icon {
-            width: 24px;
-            height: 24px;
-            flex-shrink: 0;
-        }
-        
         .chat-tasks-message ul {
             list-style-type: none;
             padding-left: 0;
@@ -261,6 +254,83 @@
             align-items: center;
             flex-grow: 1;
         }
+
+        /* Right Sidebar Styles */
+        .chat-right-sidebar {
+            width: 240px;
+            background-color: #FFFFFF;
+            border-left: 1px solid #E9ECEF;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            overflow-y: auto;
+            padding: 1.5rem;
+        }
+
+        .chat-right-sidebar h3 {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #6C757D;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 0 0 1rem 0;
+        }
+
+        .team-member-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0.5rem;
+            border-radius: 6px;
+            transition: background-color 0.2s;
+        }
+        .team-member-item:hover {
+            background-color: #e9ecef;
+        }
+
+        .team-member-item .avatar-img {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .presence-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 2px solid #FCFCFC;
+            position: relative;
+            left: -12px;
+            top: 12px;
+        }
+
+        .presence-dot.online { background-color: #28a745; }
+        .presence-dot.offline { background-color: #ced4da; }
+        
+        .team-member-item span {
+            font-weight: 500;
+            color: #212529;
+        }
+        
+        .chat-voice-rooms {
+             padding: 1rem;
+             border-top: 1px solid #E9ECEF;
+             margin-top: 1rem;
+        }
+
+        .voice-room-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .voice-room-item:hover {
+            background-color: #e9ecef;
+        }
     </style>
 </head>
 <body>
@@ -269,7 +339,7 @@
         <!-- Sidebar for Projects/Channels -->
         <aside class="chat-sidebar">
             <div class="chat-sidebar-header">
-                <a href="index.html" class="back-link" style="font-size: 1rem; font-weight: 500; display: flex; align-items: center; gap: 0.5rem; color: #6C757D;">
+                <a href="index.html" class="back-link">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
                     Back to App
                 </a>
@@ -279,6 +349,12 @@
                 <div id="project-list-container" class="project-list-chat">
                     <div class="loader">Loading projects...</div>
                 </div>
+            </div>
+            <div class="chat-sidebar-create-chat">
+                <form id="add-project-form-chat">
+                    <input type="text" id="new-project-input-chat" placeholder="New chat room..." required>
+                    <button type="submit">+</button>
+                </form>
             </div>
         </aside>
 
@@ -302,6 +378,28 @@
                 </form>
             </div>
         </main>
+        
+        <!-- Right Sidebar: Team Members & Voice Rooms -->
+        <aside class="chat-right-sidebar">
+            <h3>Team Members</h3>
+            <ul id="team-list" class="space-y-2">
+                <div class="loader">Loading members...</div>
+            </ul>
+            <div class="chat-voice-rooms">
+                <h3>Voice Rooms</h3>
+                <ul id="voice-room-list" class="space-y-2">
+                    <li class="voice-room-item" data-room-name="General Room">
+                        <span style="font-size: 1.2rem;">🎙️</span>
+                        <span>General Room</span>
+                    </li>
+                    <li class="voice-room-item" data-room-name="Design Meeting">
+                        <span style="font-size: 1.2rem;">🎙️</span>
+                        <span>Design Meeting</span>
+                    </li>
+                </ul>
+            </div>
+        </aside>
+
     </div>
 
     <script type="module" src="js/firebase-config.js"></script>
