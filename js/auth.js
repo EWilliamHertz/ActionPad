@@ -1,10 +1,20 @@
-// FILE: js/auth.js
-import { auth } from './firebase-config.js';
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { signIn, registerUser, signOut, sendVerificationEmail, sendPasswordReset } from './services/auth.js';
-import { initializeI18n, getTranslatedString } from './i18n.js';
+// --- Import initialized Firebase services and SDK functions ---
+import { auth, db } from './firebase-config.js';
+import { 
+    signInWithEmailAndPassword, 
+    createUserWithEmailAndPassword, 
+    onAuthStateChanged,
+    sendEmailVerification,
+    sendPasswordResetEmail,
+    signOut as firebaseSignOut
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { doc, setDoc, getDoc, writeBatch, collection, query, where, getDocs, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+// --- Import your UI and utility modules ---
 import { showToast } from './toast.js';
+import { initializeI18n, getTranslatedString } from './i18n.js';
 import { validateForm, setupLiveValidation } from './validation.js';
+
 
 // --- Main Setup ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -19,9 +29,13 @@ document.addEventListener('DOMContentLoaded', () => {
         passwordStrengthIndicator: document.getElementById('password-strength')
     };
 
+    // This listener handles redirection for already logged-in users
     onAuthStateChanged(auth, user => {
-        if (user && user.emailVerified && !window.location.pathname.includes('index.html')) {
-            window.location.replace('index.html');
+        // Redirect to the main app if the user is logged in, verified, and not already there.
+        // NOTE: The original code redirected to index.html, which might be your main app page.
+        // If your main app is dashboard.html, you can change this.
+        if (user && user.emailVerified && !window.location.pathname.includes('dashboard.html')) {
+            window.location.replace('dashboard.html');
         }
     });
 
@@ -29,7 +43,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setupFormHandlers(pageElements);
 });
 
-// --- Form Handlers ---
+
+// --- Form Handlers Setup ---
 function setupFormHandlers(elements) {
     if (elements.loginForm) {
         setupLiveValidation(elements.loginForm);
@@ -48,10 +63,13 @@ function setupFormHandlers(elements) {
         setupLiveValidation(elements.registerForm);
         elements.registerForm.addEventListener('submit', (e) => handleRegistration(e));
         const passwordInput = elements.registerForm.querySelector('#register-password');
-        passwordInput.addEventListener('input', () => checkPasswordStrength(passwordInput, elements.passwordStrengthIndicator));
+        if (passwordInput && elements.passwordStrengthIndicator) {
+            passwordInput.addEventListener('input', () => checkPasswordStrength(passwordInput, elements.passwordStrengthIndicator));
+        }
         setupReferralId(elements.registerForm);
     }
 }
+
 
 // --- Logic Functions ---
 
@@ -66,14 +84,15 @@ async function handleLogin(event, elements) {
     submitButton.disabled = true;
 
     try {
-        const userCredential = await signIn(email, password);
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
         if (!userCredential.user.emailVerified) {
             await handleUnverifiedUser(userCredential.user, emailVerificationNotice);
         }
+        // Successful login redirect is handled by the onAuthStateChanged listener
     } catch (error) {
         console.error("Login failed:", error.code);
         showToast(getTranslatedString('invalidCredentials'), 'error');
-        emailVerificationNotice.classList.add('hidden');
+        if (emailVerificationNotice) emailVerificationNotice.classList.add('hidden');
     } finally {
         submitButton.disabled = false;
     }
@@ -99,7 +118,51 @@ async function handleRegistration(event) {
     };
 
     try {
-        await registerUser(userData);
+        // --- Inlined logic from services/auth.js ---
+        const userCredential = await createUserWithEmailAndPassword(auth, userData.email, userData.password);
+        const user = userCredential.user;
+
+        const batch = writeBatch(db);
+        const userRef = doc(db, 'users', user.uid);
+        const userProfile = {
+            uid: user.uid,
+            email: userData.email,
+            fullName: userData.fullName,
+            nickname: userData.nickname,
+            avatarURL: '',
+            createdAt: serverTimestamp()
+        };
+
+        let companyId;
+        if (userData.referralId) {
+            // Joining an existing company
+            const companiesRef = collection(db, "companies");
+            const q = query(companiesRef, where("referralId", "==", userData.referralId));
+            const querySnapshot = await getDocs(q);
+            if (querySnapshot.empty) {
+                throw new Error("Invalid Referral ID. Company not found.");
+            }
+            const companyDoc = querySnapshot.docs[0];
+            companyId = companyDoc.id;
+        } else {
+            // Creating a new company
+            const companyRef = doc(collection(db, 'companies'));
+            companyId = companyRef.id;
+            batch.set(companyRef, {
+                name: userData.companyName,
+                ownerId: user.uid,
+                createdAt: serverTimestamp(),
+                referralId: `ref-${companyId.substring(0, 6)}`
+            });
+        }
+
+        userProfile.companyId = companyId;
+        userProfile.companyRole = userData.referralId ? 'Member' : 'Owner';
+        batch.set(userRef, userProfile);
+        await batch.commit();
+        await sendEmailVerification(user);
+        // --- End of inlined logic ---
+
         const authBox = document.querySelector('.auth-box');
         authBox.innerHTML = `
             <h2 style="text-align: center;">Registration Successful!</h2>
@@ -108,20 +171,13 @@ async function handleRegistration(event) {
             <a href="login.html" class="success-button">Go to Login Page</a>
         `;
     } catch (error) {
-        console.error("Full Firebase Error:", error);
-        
-        let message;
+        console.error("Registration Error:", error);
+        let message = getTranslatedString('genericError');
         if (error.code === 'auth/email-already-in-use') {
             message = getTranslatedString('emailInUse');
-        } else if (error.code === 'failed-precondition') {
-            message = getTranslatedString('requiredIndex');
-        } else if (error.message === "Invalid Referral ID. Company not found.") {
-            // IMPROVEMENT: Handle the specific error thrown from our service
+        } else if (error.message.includes("Invalid Referral ID")) {
             message = "Invalid Referral ID. The company could not be found.";
-        } else {
-            message = getTranslatedString('genericError');
         }
-        
         showToast(message, 'error');
         submitButton.disabled = false;
         submitButton.textContent = 'Register & Join';
@@ -129,6 +185,7 @@ async function handleRegistration(event) {
 }
 
 async function handleUnverifiedUser(user, noticeDiv) {
+    if (!noticeDiv) return;
     noticeDiv.innerHTML = `
         <p>Please verify your email.</p>
         <p>A verification link was sent to ${user.email}.</p>
@@ -140,7 +197,7 @@ async function handleUnverifiedUser(user, noticeDiv) {
     resendButton.addEventListener('click', async () => {
         resendButton.disabled = true;
         try {
-            await sendVerificationEmail(user);
+            await sendEmailVerification(user);
             showToast('A new verification email has been sent.', 'success');
             let countdown = 60;
             resendButton.textContent = `Sent! Try again in ${countdown}s`;
@@ -165,7 +222,7 @@ async function handleForgotPassword(event, elements) {
     const { forgotPasswordForm, forgotPasswordModal } = elements;
     const email = forgotPasswordForm.querySelector('#reset-email').value;
     try {
-        await sendPasswordReset(email);
+        await sendPasswordResetEmail(auth, email);
         showToast('Password reset link sent! Check your email.', 'success');
         forgotPasswordModal.classList.add('hidden');
     } catch (error) {
@@ -180,13 +237,15 @@ function setupReferralId(form) {
     if (refId) {
         const companyNameInput = form.querySelector('#register-companyname');
         const companyRoleInput = form.querySelector('#register-companyrole');
-
         form.querySelector('#register-referralid').value = refId;
-        companyNameInput.disabled = true;
-        companyNameInput.value = "Joining existing company...";
-
-        companyRoleInput.value = "Member";
-        companyRoleInput.disabled = true;
+        if(companyNameInput) {
+            companyNameInput.disabled = true;
+            companyNameInput.value = "Joining existing company...";
+        }
+        if(companyRoleInput){
+            companyRoleInput.value = "Member";
+            companyRoleInput.disabled = true;
+        }
     }
 }
 
