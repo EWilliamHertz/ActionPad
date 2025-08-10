@@ -1,6 +1,10 @@
-// --- Import necessary functions from your existing services ---
-import { auth, db } from './firebase-config.js';
-import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+// --- Import necessary Firebase services and the configuration ---
+import { firebaseConfig } from './firebase-config.js';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFirestore, doc, collection, onSnapshot, updateDoc, arrayUnion, arrayRemove, setDoc, getDoc, deleteDoc, serverTimestamp, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// --- Import your existing services ---
 import { signOut } from './services/auth.js';
 import { getUserProfile } from './services/user.js';
 import { getCompany } from './services/company.js';
@@ -8,7 +12,12 @@ import { listenToCompanyProjects } from './services/project.js';
 import { listenToCompanyPresence } from './services/presence.js';
 import { listenToProjectChat, addChatMessage } from './services/chat.js';
 import { showToast } from './toast.js';
-import { doc, collection, onSnapshot, updateDoc, arrayUnion, arrayRemove, setDoc, getDoc, deleteDoc, serverTimestamp, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// --- Initialize Firebase and get instances ---
+// This is the core of the fix. We ensure db and auth are ready right away.
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
 
 // --- STATE MANAGEMENT ---
@@ -20,12 +29,11 @@ let appState = {
     team: [],
     selectedProjectId: null,
     listeners: {},
-    // --- NEW WebRTC State ---
     localStream: null,
-    peerConnections: {}, // Using an object now: { remoteUserId: RTCPeerConnection }
+    peerConnections: {},
     currentVoiceRoom: null,
-    voiceRoomUnsubscribe: null, // Specific listener for voice room peers
-    voiceActivityDetectors: new Map(), // To keep track of audio analyzers
+    voiceRoomUnsubscribe: null,
+    voiceActivityDetectors: new Map(),
 };
 
 // --- DOM ELEMENTS ---
@@ -54,6 +62,7 @@ const rtcConfiguration = {
 
 // --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
+    // onAuthStateChanged now uses the 'auth' instance we created above.
     onAuthStateChanged(auth, async user => {
         if (user) {
             appState.user = user;
@@ -90,7 +99,6 @@ async function initialize() {
 }
 
 function setupListeners() {
-    // This function remains largely the same, setting up listeners for projects, presence, etc.
     appState.listeners.projects = listenToCompanyProjects(appState.company.id, (projects) => {
         appState.projects = projects;
         renderProjectList();
@@ -100,10 +108,9 @@ function setupListeners() {
     appState.listeners.team = listenToCompanyPresence(appState.company.id, (team) => {
         appState.team = team;
         renderTeamList();
-        // We will render voice rooms based on their own listener
     });
     
-    // Listen to all voice rooms for the company to render the list
+    // This call is now safe because 'db' is guaranteed to be initialized.
     const voiceRoomsCollectionRef = collection(db, 'rooms');
     appState.listeners.voiceRooms = onSnapshot(voiceRoomsCollectionRef, (snapshot) => {
         const allRoomsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -115,7 +122,7 @@ function setupListeners() {
 // --- UI EVENT HANDLERS ---
 function setupUIEvents() {
     document.getElementById('logout-button').addEventListener('click', async () => {
-        await handleLeaveVoiceRoom(); // Ensure user leaves voice room on logout
+        await handleLeaveVoiceRoom();
         signOut();
     });
     DOM.projectList.addEventListener('click', (e) => {
@@ -155,23 +162,21 @@ function renderVoiceRooms(allRoomsData) {
         const roomName = roomEl.dataset.roomName;
         const membersDiv = roomEl.querySelector('.voice-room-members');
         
-        // Find the corresponding room data from Firestore
         const roomData = allRoomsData.find(r => r.name === roomName);
 
         if (roomData && roomData.peers) {
             const peerIds = Object.keys(roomData.peers);
             membersDiv.innerHTML = peerIds.map(uid => {
                 const user = appState.team.find(m => m.id === uid);
-                if (!user) return ''; // Don't render if user profile isn't loaded yet
+                if (!user) return '';
                 const avatarSrc = user.avatarURL || `https://placehold.co/32x32/E9ECEF/495057?text=${user.nickname.charAt(0).toUpperCase()}`;
-                // This structure is important for the speaking indicator CSS
                 return `
                     <div class="avatar-small" id="avatar-${uid}" title="${user.nickname}">
                         <img src="${avatarSrc}" alt="${user.nickname}">
                     </div>`;
             }).join('');
         } else {
-            membersDiv.innerHTML = ''; // Clear members if room is empty
+            membersDiv.innerHTML = '';
         }
     });
 }
@@ -179,12 +184,8 @@ function renderVoiceRooms(allRoomsData) {
 
 // =================================================================
 // --- REBUILT VOICE CHAT (WebRTC) LOGIC ---
-// This section replaces the old, buggy WebRTC implementation.
 // =================================================================
 
-/**
- * Joins a voice chat room using the new, robust signaling method.
- */
 async function handleJoinVoiceRoom(roomName) {
     if (appState.currentVoiceRoom) await handleLeaveVoiceRoom();
 
@@ -199,7 +200,6 @@ async function handleJoinVoiceRoom(roomName) {
     const roomRef = doc(db, 'rooms', roomName);
     const peersCollection = collection(roomRef, 'peers');
     
-    // Add self to the room's peers subcollection
     const selfRef = doc(peersCollection, appState.user.uid);
     await setDoc(selfRef, {
         id: appState.user.uid,
@@ -207,13 +207,10 @@ async function handleJoinVoiceRoom(roomName) {
         joinedAt: serverTimestamp()
     });
 
-    // Listen for other peers joining and leaving
     appState.voiceRoomUnsubscribe = onSnapshot(peersCollection, (snapshot) => {
-        // First, render all current members
         const currentPeers = snapshot.docs.map(d => d.id);
         renderVoiceRoomMembers(roomName, currentPeers);
 
-        // Then, handle connections/disconnections
         for (const change of snapshot.docChanges()) {
             const peerId = change.doc.id;
             if (peerId === appState.user.uid) continue;
@@ -227,7 +224,6 @@ async function handleJoinVoiceRoom(roomName) {
             }
         }
         
-        // Setup local audio indicator
         const localAvatar = document.querySelector(`#avatar-${appState.user.uid}`);
         if(localAvatar && appState.localStream) {
              setupVoiceActivityDetector(appState.localStream, localAvatar, appState.user.uid);
@@ -238,57 +234,44 @@ async function handleJoinVoiceRoom(roomName) {
     showToast(`Joined voice room: ${roomName}`, 'success');
 }
 
-/**
- * Leaves the current voice room and cleans up all connections.
- */
 async function handleLeaveVoiceRoom() {
     if (!appState.currentVoiceRoom) return;
 
     const roomName = appState.currentVoiceRoom;
     console.log(`Leaving room: ${roomName}`);
 
-    // Stop listening to room changes
     if (appState.voiceRoomUnsubscribe) {
         appState.voiceRoomUnsubscribe();
         appState.voiceRoomUnsubscribe = null;
     }
 
-    // Close all peer connections
     for (const peerId in appState.peerConnections) {
         appState.peerConnections[peerId].pc.close();
     }
     appState.peerConnections = {};
 
-    // Stop local media stream
     if (appState.localStream) {
         appState.localStream.getTracks().forEach(track => track.stop());
         appState.localStream = null;
     }
     
-    // Stop all voice activity detectors
     appState.voiceActivityDetectors.forEach(({ context, animationFrameId }) => {
         cancelAnimationFrame(animationFrameId);
         context.close();
     });
     appState.voiceActivityDetectors.clear();
 
-    // Remove self from Firestore
     const selfRef = doc(db, 'rooms', roomName, 'peers', appState.user.uid);
     await deleteDoc(selfRef);
     
-    // Clean up UI
     DOM.remoteAudioContainer.innerHTML = '';
-    renderVoiceRoomMembers(roomName, []); // Clear members from UI
+    renderVoiceRoomMembers(roomName, []);
     
     showToast(`Left voice room: ${roomName}`, 'info');
     appState.currentVoiceRoom = null;
     updateVoiceRoomUI();
 }
 
-/**
- * Creates and manages a peer connection to a remote user.
- * This function handles offers, answers, and ICE candidates automatically.
- */
 async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
     if (appState.peerConnections[remoteUserId]) {
         console.warn(`Connection to ${remoteUserId} already exists.`);
@@ -298,13 +281,10 @@ async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
     console.log(`Creating peer connection to ${remoteUserId}`);
     const pc = new RTCPeerConnection(rtcConfiguration);
     
-    // Store the connection and its listener unsubscriber
     appState.peerConnections[remoteUserId] = { pc, listener: null };
 
-    // Add local stream tracks to the connection
     appState.localStream.getTracks().forEach(track => pc.addTrack(track, appState.localStream));
 
-    // Handle incoming remote tracks
     pc.ontrack = event => {
         console.log(`Track received from ${remoteUserId}`);
         if (event.streams && event.streams[0]) {
@@ -316,14 +296,12 @@ async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
     const localPeerRef = doc(roomRef, 'peers', appState.user.uid);
     const remotePeerRef = doc(roomRef, 'peers', remoteUserId);
 
-    // Handle ICE candidates by adding them to a subcollection
     pc.onicecandidate = event => {
         if (event.candidate) {
             addDoc(collection(localPeerRef, 'candidates'), event.candidate.toJSON());
         }
     };
 
-    // Listen for remote ICE candidates
     onSnapshot(collection(remotePeerRef, 'candidates'), snapshot => {
         snapshot.docChanges().forEach(async change => {
             if (change.type === 'added') {
@@ -333,16 +311,13 @@ async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
         });
     });
 
-    // --- NEW SIGNALING LOGIC ---
     if (isOffering) {
         const offerDescription = await pc.createOffer();
         await pc.setLocalDescription(offerDescription);
-        // The offerDescription is a plain object, no .toJSON() needed.
         const offer = { sdp: offerDescription.sdp, type: offerDescription.type };
         await updateDoc(localPeerRef, { offer });
     }
 
-    // Listen for offers/answers on the remote peer's document
     appState.peerConnections[remoteUserId].listener = onSnapshot(remotePeerRef, async (doc) => {
         const data = doc.data();
         if (!pc.currentRemoteDescription && data?.offer) {
@@ -371,24 +346,20 @@ async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
 // --- UI & UTILITY FUNCTIONS (Adapted) ---
 
 function removeParticipant(peerId) {
-    // Remove from UI
     const avatarEl = document.getElementById(`avatar-${peerId}`);
     if (avatarEl) avatarEl.remove();
 
-    // Remove audio element
     const audioEl = document.getElementById(`audio-${peerId}`);
     if (audioEl) audioEl.remove();
 
-    // Close and delete peer connection
     if (appState.peerConnections[peerId]) {
         appState.peerConnections[peerId].pc.close();
         if (appState.peerConnections[peerId].listener) {
-            appState.peerConnections[peerId].listener(); // Unsubscribe from listener
+            appState.peerConnections[peerId].listener();
         }
         delete appState.peerConnections[peerId];
     }
     
-    // Stop voice detection for this user
     stopVoiceActivityDetector(peerId);
 }
 
@@ -402,16 +373,12 @@ function addRemoteAudio(peerId, stream) {
     audio.playsInline = true;
     DOM.remoteAudioContainer.appendChild(audio);
 
-    // Set up voice indicator for the remote user
     const avatar = document.getElementById(`avatar-${peerId}`);
     if (avatar) {
         setupVoiceActivityDetector(stream, avatar, peerId);
     }
 }
 
-/**
- * Renders the members for a specific voice room.
- */
 function renderVoiceRoomMembers(roomName, peerIds) {
     const roomEl = DOM.voiceRoomList.querySelector(`.voice-room-item[data-room-name="${roomName}"]`);
     if (!roomEl) return;
@@ -428,13 +395,7 @@ function renderVoiceRoomMembers(roomName, peerIds) {
     }).join('');
 }
 
-
-/**
- * *** NEW, FIXED VOICE INDICATOR ***
- * Uses the Web Audio API to detect when a stream has active audio.
- */
 function setupVoiceActivityDetector(stream, element, userId) {
-    // Stop any existing detector for this user first
     stopVoiceActivityDetector(userId);
 
     const audioContext = new(window.AudioContext || window.webkitAudioContext)();
@@ -462,7 +423,7 @@ function setupVoiceActivityDetector(stream, element, userId) {
 
         if (average > speakingThreshold) {
             element.classList.add('speaking');
-            speakingCooldown = 30; // Keep aura for 30 frames
+            speakingCooldown = 30;
         } else {
             if (speakingCooldown > 0) {
                 speakingCooldown--;
@@ -484,7 +445,6 @@ function stopVoiceActivityDetector(userId) {
         appState.voiceActivityDetectors.delete(userId);
     }
 }
-
 
 function updateVoiceRoomUI() {
     DOM.voiceRoomList.querySelectorAll('.voice-room-item').forEach(el => {
