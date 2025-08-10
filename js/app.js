@@ -7,7 +7,6 @@ import { getCompany } from './services/company.js';
 import { listenToCompanyTasks } from './services/task.js';
 import { listenToCompanyProjects, uploadProjectLogo, updateProject } from './services/project.js';
 import { manageUserPresence, listenToCompanyPresence } from './services/presence.js';
-import { listenToCompanyChat, addChatMessage } from './services/chat.js';
 import { listenToNotifications, markNotificationsAsRead } from './services/notification.js';
 
 import { initializeI18n, setLanguage } from './i18n.js';
@@ -25,7 +24,6 @@ const appState = {
     tasksListener: null,
     projectsListener: null,
     presenceListener: null,
-    chatListener: null,
     notificationsListener: null,
 };
 
@@ -116,7 +114,6 @@ async function initialize(companyId) {
 function setupListeners() {
     if (appState.projectsListener) appState.projectsListener();
     if (appState.presenceListener) appState.presenceListener();
-    if (appState.chatListener) appState.chatListener();
     if (appState.notificationsListener) appState.notificationsListener();
 
     appState.projectsListener = listenToCompanyProjects(appState.company.id, (projects) => {
@@ -132,10 +129,6 @@ function setupListeners() {
         appState.team = users;
         UImanager.renderTeamList(appState.team, appState.user.uid);
         populateAssigneeFilter(users);
-    });
-
-    appState.chatListener = listenToCompanyChat(appState.company.id, (messages) => {
-        UImanager.renderChatMessages(messages, appState.user.uid);
     });
 
     appState.notificationsListener = listenToNotifications(appState.user.uid, (notifications) => {
@@ -261,17 +254,6 @@ function setupUI() {
         document.getElementById('sidebar').classList.toggle('open');
     });
 
-    document.getElementById('team-chat-form').addEventListener('submit', (e) => {
-        e.preventDefault();
-        const input = document.getElementById('team-chat-input');
-        const text = input.value.trim();
-        if (text) {
-            const author = { uid: appState.user.uid, nickname: appState.profile.nickname, avatarURL: appState.profile.avatarURL || null };
-            addChatMessage(appState.company.id, author, text);
-            input.value = '';
-        }
-    });
-    
     taskController.setupProjectForm(appState);
     taskController.setupTaskForm();
     UImanager.setupModals();
