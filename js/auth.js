@@ -1,7 +1,7 @@
 // FILE: js/auth.js
 import { auth } from './firebase-config.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { signIn, registerUser, signOut, sendVerificationEmail, sendPasswordReset } from './services/auth.js';
+import { signIn, registerUser, signOut, sendVerificationEmail, sendPasswordReset, deleteUserAccount } from './services/auth.js';
 import { initializeI18n, getTranslatedString } from './i18n.js';
 import { showToast } from './toast.js';
 import { validateForm, setupLiveValidation } from './validation.js';
@@ -69,7 +69,6 @@ async function handleLogin(event, elements) {
         const userCredential = await signIn(email, password);
         if (!userCredential.user.emailVerified) {
             await handleUnverifiedUser(userCredential.user, emailVerificationNotice);
-            await signOut(); // Sign out until verified
         }
     } catch (error) {
         console.error("Login failed:", error.code);
