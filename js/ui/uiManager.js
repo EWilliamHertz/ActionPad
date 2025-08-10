@@ -1,14 +1,29 @@
 // FILE: js/ui/uiManager.js
-export * from './domElements.js';
-export * from './taskRenderer.js';
-export * from './modalManager.js';
-export * from './detailsRenderer.js';
-export * from './i18n.js';
-export * from './sidebarRenderer.js';
-export * from './viewManager.js';
-export * from './dragDrop.js'; // <-- ADD THIS LINE
 
-// --- Other UI utility functions ---
+// Import functions from other UI modules
+import { DOM, getElement } from './domElements.js';
+import { createTaskElement, renderListView, renderKanbanView } from './taskRenderer.js';
+import { initModalManager, setupModals, openModal, closeModal } from './modalManager.js';
+import { renderSubtasks, renderAttachments, renderComments } from './detailsRenderer.js';
+import { renderTranslatedText } from './i18n.js';
+import { renderTeamList, renderChatMessages } from './sidebarRenderer.js';
+import { switchView, renderView } from './viewManager.js';
+import { setupDragDrop } from './dragDrop.js';
+
+// Re-export them for other files to use in a stable way
+export {
+    DOM, getElement,
+    createTaskElement, renderListView, renderKanbanView,
+    initModalManager, setupModals, openModal, closeModal,
+    renderSubtasks, renderAttachments, renderComments,
+    renderTranslatedText,
+    renderTeamList, renderChatMessages,
+    switchView, renderView,
+    setupDragDrop
+};
+
+
+// --- UI utility functions that live in this file ---
 
 export const updateUserInfo = (profile, company) => {
     if (profile) {
