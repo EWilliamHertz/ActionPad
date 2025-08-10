@@ -103,7 +103,9 @@ async function initialize(companyId) {
 
         setupUI();
         setupListeners();
+        
         // FIX: Call the updated presence management function which now correctly uses RTDB.
+        // It no longer needs the companyId passed here.
         manageUserPresence(appState.user);
 
         document.getElementById('app-container').classList.remove('hidden');
@@ -139,7 +141,7 @@ function setupListeners() {
 
     appState.notificationsListener = listenToNotifications(appState.user.uid, (notifications) => {
         appState.notifications = notifications;
-        // This is a good place to update the notification bell UI if you have one
+        // This would be the place to update a UI element for notifications
     });
     
     switchProject('all');
