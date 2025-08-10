@@ -24,11 +24,11 @@ let appState = {
 };
 
 const DOM = {
-    projectList: document.getElementById('project-list'),
+    projectList: document.getElementById('project-list-container'),
     teamList: document.getElementById('team-list'),
-    chatProjectName: document.getElementById('chat-project-name'),
-    chatMessages: document.getElementById('chat-messages'),
-    chatForm: document.getElementById('chat-form'),
+    chatProjectName: document.getElementById('current-project-name'),
+    chatMessages: document.getElementById('chat-messages-container'),
+    chatForm: document.getElementById('chat-input-form'),
     chatInput: document.getElementById('chat-input'),
     pageContainer: document.getElementById('chat-page-container'),
     chatHeader: document.getElementById('chat-header'),
@@ -40,12 +40,12 @@ document.addEventListener('DOMContentLoaded', () => {
             appState.user = user;
             try {
                 await initialize();
-                DOM.pageContainer.style.display = 'grid'; // Show the chat UI
+                DOM.pageContainer.classList.remove('hidden'); // Show the chat UI
             } catch (error) {
                 console.error("Chat app initialization failed:", error);
                 showToast(error.message, 'error');
-                // Redirect on critical failure
-                setTimeout(() => window.location.replace('index.html'), 3000);
+                // Redirect on critical failure after a short delay
+                setTimeout(() => window.location.replace('dashboard.html'), 3000);
             }
         } else {
             // User is not signed in, redirect to login
@@ -99,8 +99,13 @@ function setupListeners() {
 }
 
 function setupUIEvents() {
+    document.getElementById('logout-button').addEventListener('click', () => {
+        localStorage.removeItem('selectedCompanyId');
+        signOut();
+    });
+    
     DOM.projectList.addEventListener('click', (e) => {
-        const item = e.target.closest('.project-item');
+        const item = e.target.closest('.project-item-chat');
         if (item) {
             const projectId = item.dataset.projectId;
             if (projectId !== appState.selectedProjectId) {
@@ -123,37 +128,52 @@ function switchProject(projectId) {
     DOM.chatProjectName.textContent = project ? project.name : 'General';
     
     // Update active state in sidebar
-    document.querySelectorAll('.project-item').forEach(item => {
+    document.querySelectorAll('.project-item-chat').forEach(item => {
         item.classList.toggle('active', item.dataset.projectId === projectId);
     });
 
     // Clear previous chat messages and show loader
-    DOM.chatMessages.innerHTML = '<div class="loader-container">Loading...</div>';
+    DOM.chatMessages.innerHTML = '<div class="loader">Loading...</div>';
 
     // Fetch and render initial tasks
     appState.tasksListener = listenToCompanyTasks(appState.company.id, projectId, (tasks) => {
-        renderChatContent(tasks, appState.messages);
-    });
-    
-    // Fetch and render real-time chat messages
-    appState.chatListener = listenToProjectChat(projectId, (messages) => {
-        appState.messages = messages;
-        renderChatContent(appState.tasks, messages);
+        appState.tasks = tasks; // Store tasks
+        // Fetch chat messages after tasks are loaded
+        appState.chatListener = listenToProjectChat(projectId, (messages) => {
+            appState.messages = messages;
+            renderChatContent(tasks, messages);
+        });
     });
 }
 
 function renderChatContent(tasks, messages) {
     DOM.chatMessages.innerHTML = '';
-    const sortedContent = [...tasks.map(t => ({...t, type: 'task'})), ...messages.map(m => ({...m, type: 'message'}))]
-        .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
-
-    sortedContent.forEach(item => {
-        if (item.type === 'task') {
-            renderTaskMessage(item);
-        } else {
-            renderChatMessage(item);
-        }
-    });
+    
+    if (tasks.length > 0) {
+        // Render all tasks as a "system message" at the top
+        const taskMessageEl = document.createElement('div');
+        taskMessageEl.className = 'chat-tasks-message';
+        taskMessageEl.innerHTML = `
+            <h4>Project Tasks</h4>
+            <ul>
+                ${tasks.map(task => `
+                    <li class="${task.status}">
+                        <span class="task-status-dot ${task.status}"></span>
+                        <span>${task.name}</span>
+                    </li>
+                `).join('')}
+            </ul>
+        `;
+        DOM.chatMessages.appendChild(taskMessageEl);
+    }
+    
+    if (messages.length === 0 && tasks.length === 0) {
+        DOM.chatMessages.innerHTML = '<div class="loader">Start the conversation!</div>';
+    } else {
+         messages.forEach(message => {
+            renderChatMessage(message);
+        });
+    }
 
     // Auto-scroll to the bottom
     DOM.chatMessages.scrollTop = DOM.chatMessages.scrollHeight;
@@ -163,12 +183,12 @@ function renderProjectList() {
     if (!DOM.projectList) return;
     DOM.projectList.innerHTML = ''; // Clear existing list
     appState.projects.forEach(project => {
-        const listItem = document.createElement('li');
+        const listItem = document.createElement('div');
+        listItem.className = `project-item-chat ${appState.selectedProjectId === project.id ? 'active' : ''}`;
+        listItem.dataset.projectId = project.id;
         listItem.innerHTML = `
-            <button class="project-item" data-project-id="${project.id}">
-                <span class="project-icon">#</span>
-                <span>${project.name}</span>
-            </button>
+            <span class="project-icon">#</span>
+            <span>${project.name}</span>
         `;
         DOM.projectList.appendChild(listItem);
     });
@@ -193,7 +213,7 @@ function renderTeamList() {
 function renderChatMessage(message) {
     const isSelf = message.author.uid === appState.user.uid;
     const messageEl = document.createElement('div');
-    messageEl.className = `chat-message ${isSelf ? 'is-self' : ''}`;
+    messageEl.className = `chat-message-full ${isSelf ? 'is-self' : ''}`;
     const avatarSrc = message.author.avatarURL || `https://placehold.co/40x40/E9ECEF/495057?text=${message.author.nickname.charAt(0).toUpperCase()}`;
     const timestamp = message.createdAt ? message.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
 
@@ -208,24 +228,6 @@ function renderChatMessage(message) {
         </div>
     `;
     DOM.chatMessages.appendChild(messageEl);
-}
-
-function renderTaskMessage(task) {
-    const taskEl = document.createElement('div');
-    taskEl.className = `task-message ${task.status === 'done' ? 'done' : ''}`;
-    taskEl.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" class="task-status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            ${task.status === 'done' ? 
-                `<polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>` : 
-                `<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>`
-            }
-        </svg>
-        <div>
-            <h4>${task.name}</h4>
-            <p>Assigned to: ${task.assignedTo.map(uid => appState.team.find(u => u.id === uid)?.nickname || 'Unknown').join(', ')}</p>
-        </div>
-    `;
-    DOM.chatMessages.appendChild(taskEl);
 }
 
 async function handleSendMessage(e) {
