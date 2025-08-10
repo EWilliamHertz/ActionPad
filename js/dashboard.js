@@ -105,16 +105,10 @@ function createCompanyCard(data, membership) {
             </a>`
         : '';
 
-    // NEW: Logic to display company logo or a placeholder
-    const companyLogoUrl = company.logoURL || `https://placehold.co/48x48/E9ECEF/495057?text=${company.name.charAt(0).toUpperCase()}`;
-
     card.innerHTML = `
         <div class="company-card-header">
-            <img src="${companyLogoUrl}" alt="${company.name} Logo" class="company-logo-small">
-            <div>
-                <h3>${company.name}</h3>
-                <p>Your role: ${membership.role}</p>
-            </div>
+            <h3>${company.name}</h3>
+            <p>Your role: ${membership.role}</p>
         </div>
         <div class="company-card-progress">
             <div class="progress-bar-container">
@@ -143,7 +137,9 @@ function createCompanyCard(data, membership) {
         </div>
     `;
 
+    // THIS IS THE FIX:
     card.querySelector('.switch-company-btn').addEventListener('click', () => {
+        // We MUST set the item in localStorage BEFORE redirecting.
         localStorage.setItem('selectedCompanyId', membership.companyId);
         window.location.href = 'index.html';
     });
@@ -206,7 +202,11 @@ function renderTaskStatusChart(tasks) {
                 statusCounts['in-progress'] || 0,
                 statusCounts['done'] || 0
             ],
-            backgroundColor: ['#F6E05E', '#4A90E2', '#68D391'],
+            backgroundColor: [
+                '#F6E05E', 
+                '#4A90E2', 
+                '#68D391'
+            ],
             borderColor: '#FFFFFF',
             borderWidth: 2
         }]
@@ -222,29 +222,42 @@ function renderTaskStatusChart(tasks) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom' } }
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                }
+            }
         }
     });
 }
 
+
+// Modal Handling
 const joinModal = document.getElementById('join-company-modal');
 const createModal = document.getElementById('create-company-modal');
+
 document.getElementById('join-company-btn').addEventListener('click', () => joinModal.classList.remove('hidden'));
 document.getElementById('create-company-btn').addEventListener('click', () => createModal.classList.remove('hidden'));
+
 document.querySelectorAll('.modal-close').forEach(btn => {
-    btn.addEventListener('click', (e) => e.target.closest('.modal-overlay').classList.add('hidden'));
+    btn.addEventListener('click', (e) => {
+        e.target.closest('.modal-overlay').classList.add('hidden');
+    });
 });
+
 document.getElementById('join-company-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const referralId = document.getElementById('join-referral-id').value;
+    const userRole = document.getElementById('join-company-role').value;
     try {
-        await joinCompanyWithReferralId(currentUser, referralId);
+        await joinCompanyWithReferralId(currentUser, referralId, userRole);
         showToast('Successfully joined company!', 'success');
         location.reload(); 
     } catch (error) {
         showToast(error.message, 'error');
     }
 });
+
 document.getElementById('create-company-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const companyName = document.getElementById('create-company-name').value;
@@ -257,4 +270,6 @@ document.getElementById('create-company-form').addEventListener('submit', async 
         showToast(error.message, 'error');
     }
 });
+
+
 document.getElementById('logout-button').addEventListener('click', signOut);
