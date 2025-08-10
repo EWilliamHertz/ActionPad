@@ -35,10 +35,11 @@ const appState = {
         voiceRoomPeerListeners: new Map(),
     },
     localStream: null,
-    peerConnections: {}, // Stores { pc, listener } for each peer
+    peerConnections: {}, // Stores { pc, listener, iceCandidateQueue } for each peer
     currentVoiceRoom: null,
     voiceRoomUnsubscribe: null, // Listener for peers in the current room
     voiceActivityDetectors: new Map(), // Stores { context, animationFrameId }
+    isAudioUnlocked: false, // NEW: Flag to track if user has interacted
 };
 
 // --- DOM ELEMENTS ---
@@ -99,6 +100,9 @@ async function initialize() {
 
     setupUIEvents();
     setupListeners();
+
+    // NEW: Add the one-time click listener to unlock audio
+    document.body.addEventListener('click', unlockAllAudio, { once: true });
 }
 
 function setupListeners() {
@@ -109,7 +113,6 @@ function setupListeners() {
     appState.listeners.voiceRoomPeerListeners.forEach(unsub => unsub());
     appState.listeners.voiceRoomPeerListeners.clear();
 
-    // Listen to projects in the company
     appState.listeners.projects = listenToCompanyProjects(appState.company.id, (projects) => {
         appState.projects = projects;
         renderProjectList();
@@ -118,11 +121,9 @@ function setupListeners() {
         }
     });
 
-    // Listen to team member presence
     appState.listeners.team = listenToCompanyPresence(appState.company.id, (team) => {
         appState.team = team;
         renderTeamList();
-        // Re-render voice room members if team data updates
         if (appState.currentVoiceRoom) {
             const roomEl = DOM.voiceRoomList.querySelector(`.voice-room-item[data-room-name="${appState.currentVoiceRoom}"]`);
             if (roomEl) {
@@ -133,13 +134,11 @@ function setupListeners() {
         }
     });
 
-    // Listen to all voice rooms to know who is in which room
     const voiceRoomsCollectionRef = collection(db, 'rooms');
     appState.listeners.voiceRooms = onSnapshot(voiceRoomsCollectionRef, (snapshot) => {
         const roomsData = new Map();
         snapshot.docs.forEach(doc => roomsData.set(doc.id, []));
 
-        // Create a batch of promises to get all peers for all rooms
         const peerPromises = snapshot.docs.map(roomDoc =>
             getDocs(collection(db, 'rooms', roomDoc.id, 'peers')).then(peersSnapshot => {
                 const peerIds = peersSnapshot.docs.map(peerDoc => peerDoc.id);
@@ -147,7 +146,6 @@ function setupListeners() {
             })
         );
         
-        // Once all peer data is fetched, render it
         Promise.all(peerPromises).then(() => {
             roomsData.forEach((peerIds, roomId) => {
                 renderVoiceRoomMembers(roomId, peerIds);
@@ -253,10 +251,9 @@ function renderVoiceRoomMembers(roomName, peerIds) {
                 </div>`;
         }).join('');
     } else {
-        membersDiv.innerHTML = ''; // Clear if no members
+        membersDiv.innerHTML = '';
     }
 }
-
 
 // --- CORE LOGIC FUNCTIONS ---
 
@@ -296,6 +293,23 @@ async function handleSendMessage(e) {
 // --- VOICE CHAT (WebRTC) LOGIC ---
 // =================================================================
 
+// NEW: Function to unlock and play all audio streams
+function unlockAllAudio() {
+    if (appState.isAudioUnlocked) return;
+    console.log("Unlocking audio due to user interaction...");
+    const audioElements = DOM.remoteAudioContainer.querySelectorAll('audio');
+    let playPromise;
+    audioElements.forEach(audio => {
+        audio.muted = false;
+        playPromise = audio.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(error => console.error(`Could not play audio ${audio.id}:`, error));
+        }
+    });
+    appState.isAudioUnlocked = true;
+    showToast("Audio enabled!", "success");
+}
+
 async function handleJoinVoiceRoom(roomName) {
     if (appState.currentVoiceRoom) await handleLeaveVoiceRoom();
 
@@ -317,23 +331,14 @@ async function handleJoinVoiceRoom(roomName) {
         joinedAt: serverTimestamp()
     });
 
-    // Listen for changes in the peers collection for this room
     appState.voiceRoomUnsubscribe = onSnapshot(peersCollection, (snapshot) => {
         renderVoiceRoomMembers(roomName, snapshot.docs.map(d => d.id));
-
         for (const change of snapshot.docChanges()) {
             const peerId = change.doc.id;
             if (peerId === appState.user.uid) continue;
-
-            if (change.type === 'added') {
-                console.log(`Peer ${peerId} joined. Creating offer.`);
-                createPeerConnection(peerId, roomName, true);
-            } else if (change.type === 'removed') {
-                console.log(`Peer ${peerId} left.`);
-                removeParticipant(peerId);
-            }
+            if (change.type === 'added') createPeerConnection(peerId, roomName, true);
+            else if (change.type === 'removed') removeParticipant(peerId);
         }
-        
         const localAvatar = document.querySelector(`#avatar-${appState.user.uid}`);
         if(localAvatar && appState.localStream) {
              setupVoiceActivityDetector(appState.localStream, localAvatar, appState.user.uid);
@@ -346,15 +351,9 @@ async function handleJoinVoiceRoom(roomName) {
 
 async function handleLeaveVoiceRoom() {
     if (!appState.currentVoiceRoom) return;
-
     const roomName = appState.currentVoiceRoom;
-    console.log(`Leaving room: ${roomName}`);
 
-    if (appState.voiceRoomUnsubscribe) {
-        appState.voiceRoomUnsubscribe();
-        appState.voiceRoomUnsubscribe = null;
-    }
-
+    if (appState.voiceRoomUnsubscribe) appState.voiceRoomUnsubscribe();
     Object.values(appState.peerConnections).forEach(({ pc, listener }) => {
         pc.close();
         if (listener) listener();
@@ -372,9 +371,7 @@ async function handleLeaveVoiceRoom() {
     });
     appState.voiceActivityDetectors.clear();
 
-    const selfRef = doc(db, 'rooms', roomName, 'peers', appState.user.uid);
-    await deleteDoc(selfRef);
-    
+    await deleteDoc(doc(db, 'rooms', roomName, 'peers', appState.user.uid));
     DOM.remoteAudioContainer.innerHTML = '';
     
     showToast(`Left voice room: ${roomName}`, 'info');
@@ -383,20 +380,14 @@ async function handleLeaveVoiceRoom() {
 }
 
 async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
-    if (appState.peerConnections[remoteUserId]) {
-        console.warn(`Connection to ${remoteUserId} already exists.`);
-        return;
-    }
+    if (appState.peerConnections[remoteUserId]) return;
 
-    console.log(`Creating peer connection to ${remoteUserId}`);
     const pc = new RTCPeerConnection(rtcConfiguration);
-    
-    appState.peerConnections[remoteUserId] = { pc, listener: null };
+    appState.peerConnections[remoteUserId] = { pc, listener: null, iceCandidateQueue: [] };
 
     appState.localStream.getTracks().forEach(track => pc.addTrack(track, appState.localStream));
 
     pc.ontrack = event => {
-        console.log(`Track received from ${remoteUserId}`);
         if (event.streams && event.streams[0]) {
             addRemoteAudio(remoteUserId, event.streams[0]);
         }
@@ -407,21 +398,17 @@ async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
     const remotePeerRef = doc(roomRef, 'peers', remoteUserId);
 
     pc.onicecandidate = event => {
-        if (event.candidate) {
-            addDoc(collection(localPeerRef, 'candidates'), event.candidate.toJSON());
-        }
+        if (event.candidate) addDoc(collection(localPeerRef, 'candidates'), event.candidate.toJSON());
     };
 
     onSnapshot(collection(remotePeerRef, 'candidates'), snapshot => {
         snapshot.docChanges().forEach(async change => {
             if (change.type === 'added') {
-                try {
-                    const candidate = new RTCIceCandidate(change.doc.data());
-                    if (pc.remoteDescription) {
-                        await pc.addIceCandidate(candidate);
-                    }
-                } catch (e) {
-                    console.error('Error adding received ICE candidate', e);
+                const candidate = new RTCIceCandidate(change.doc.data());
+                if (pc.remoteDescription) {
+                    await pc.addIceCandidate(candidate);
+                } else {
+                    appState.peerConnections[remoteUserId].iceCandidateQueue.push(candidate);
                 }
             }
         });
@@ -431,19 +418,25 @@ async function createPeerConnection(remoteUserId, roomId, isOffering = false) {
         const data = docSnapshot.data();
         if (data) {
             if (!pc.currentRemoteDescription && data.offer) {
-                console.log(`Received offer from ${remoteUserId}, creating answer.`);
                 const offer = new RTCSessionDescription(data.offer);
                 await pc.setRemoteDescription(offer);
+                
+                // Process queued candidates
+                const queue = appState.peerConnections[remoteUserId].iceCandidateQueue;
+                while(queue.length > 0) await pc.addIceCandidate(queue.shift());
 
                 const answerDescription = await pc.createAnswer();
                 await pc.setLocalDescription(answerDescription);
-
                 const answer = { type: answerDescription.type, sdp: answerDescription.sdp };
                 await updateDoc(localPeerRef, { answer });
+
             } else if (data.answer && pc.signalingState !== "stable") {
-                 console.log(`Received answer from ${remoteUserId}.`);
                  const answer = new RTCSessionDescription(data.answer);
                  await pc.setRemoteDescription(answer);
+
+                 // Process queued candidates
+                 const queue = appState.peerConnections[remoteUserId].iceCandidateQueue;
+                 while(queue.length > 0) await pc.addIceCandidate(queue.shift());
             }
         }
     });
@@ -474,25 +467,26 @@ function removeParticipant(peerId) {
 }
 
 function addRemoteAudio(peerId, stream) {
-    // Prevent adding duplicate audio elements
     if (document.getElementById(`audio-${peerId}`)) return;
 
+    console.log(`Adding remote audio for ${peerId}. Audio unlocked: ${appState.isAudioUnlocked}`);
     const audio = document.createElement('audio');
     audio.id = `audio-${peerId}`;
     audio.srcObject = stream;
-    audio.autoplay = true;
     audio.playsInline = true; 
+    
+    // NEW: Initially mute the audio. It will be unmuted on user interaction.
+    audio.muted = true; 
+    audio.autoplay = true;
+
     DOM.remoteAudioContainer.appendChild(audio);
 
-    // ** THE FIX IS HERE **
-    // Explicitly call play() to satisfy browser autoplay policies.
-    // Use a try-catch block to handle potential errors.
-    audio.play().catch(error => {
-        console.error(`Error playing audio for peer ${peerId}:`, error);
-        showToast("Could not play remote audio. Please click the page to enable.", "error");
-    });
+    // If audio is already unlocked, play immediately. Otherwise, it will be handled by unlockAllAudio.
+    if (appState.isAudioUnlocked) {
+        audio.muted = false;
+        audio.play().catch(error => console.error(`Error playing immediate audio for peer ${peerId}:`, error));
+    }
 
-    // Attach the voice activity detector to the new stream
     const avatar = document.getElementById(`avatar-${peerId}`);
     if (avatar) {
         setupVoiceActivityDetector(stream, avatar, peerId);
@@ -527,13 +521,10 @@ function setupVoiceActivityDetector(stream, element, userId) {
 
         if (average > speakingThreshold) {
             element.classList.add('speaking');
-            speakingCooldown = 30; // Frames to stay lit after speaking stops
+            speakingCooldown = 30;
         } else {
-            if (speakingCooldown > 0) {
-                speakingCooldown--;
-            } else {
-                element.classList.remove('speaking');
-            }
+            if (speakingCooldown > 0) speakingCooldown--;
+            else element.classList.remove('speaking');
         }
         animationFrameId = requestAnimationFrame(detect);
     };
