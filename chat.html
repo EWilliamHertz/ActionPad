@@ -256,7 +256,6 @@
             flex-grow: 1;
         }
 
-        /* Right Sidebar Styles */
         .chat-right-sidebar {
             width: 240px;
             background-color: #FFFFFF;
@@ -349,6 +348,7 @@
 <body>
     <div id="toast-container"></div>
     <div id="chat-page-container" class="hidden chat-page-container">
+        <!-- Sidebar for Projects/Channels -->
         <aside class="chat-sidebar">
             <div class="chat-sidebar-header">
                 <a href="index.html" class="back-link">
@@ -370,6 +370,7 @@
             </div>
         </aside>
 
+        <!-- Main Chat Area -->
         <main class="chat-main">
             <header class="chat-header">
                 <h1 id="current-project-name">Select a Project</h1>
@@ -390,6 +391,7 @@
             </div>
         </main>
         
+        <!-- Right Sidebar: Team Members & Voice Rooms -->
         <aside class="chat-right-sidebar">
             <h3>Team Members</h3>
             <ul id="team-list" class="space-y-2">
