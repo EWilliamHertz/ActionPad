@@ -287,51 +287,44 @@ async function handleAddProject(e) {
     }
 }
 
-/**
- * Handles joining a voice room using Firestore as a signaling server.
- * This is a peer-to-peer connection, so it only supports two users at a time.
- * For a multi-user chat, a more complex signaling mechanism would be needed.
- * @param {string} roomName The name of the voice room to join.
- * @param {HTMLElement} button The button element that was clicked.
- */
 async function handleJoinVoiceRoom(roomName, button) {
     showToast(`Attempting to join voice room: ${roomName}...`, 'info');
     
-    // Create a new Firestore document for the voice room
     const voiceRoomRef = doc(db, 'voice_rooms', roomName);
     appState.voiceRoomRef = voiceRoomRef;
 
     try {
-        // Get user's local audio stream (microphone)
         const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         appState.localStream = localStream;
-        
-        // Listen to the voice room document for changes
-        const unsubscribe = onSnapshot(voiceRoomRef, async (snapshot) => {
+
+        const onRoomUpdate = async (snapshot) => {
             const data = snapshot.data();
-            if (data && data.users) {
-                const remoteUserId = data.users.find(uid => uid !== appState.user.uid);
-                
-                if (remoteUserId && !appState.peerConnections.has(remoteUserId)) {
-                    // Start a connection if a new user joins
-                    await startPeerConnection(remoteUserId, localStream);
-                } else if (!remoteUserId && appState.peerConnections.size > 0) {
-                    // A user has left, close the connection
-                    appState.peerConnections.forEach(pc => pc.close());
-                    appState.peerConnections.clear();
-                    appState.voiceRoomUsers.clear();
-                    showToast("User left the room.", 'info');
+            const users = data ? data.users || [] : [];
+            const remoteUsers = users.filter(uid => uid !== appState.user.uid);
+            
+            // Clean up connections for users who left
+            appState.peerConnections.forEach((pc, uid) => {
+                if (!remoteUsers.includes(uid)) {
+                    pc.close();
+                    appState.peerConnections.delete(uid);
+                }
+            });
+
+            // Start connections for new users
+            for (const remoteUserId of remoteUsers) {
+                if (!appState.peerConnections.has(remoteUserId)) {
+                    await startPeerConnection(remoteUserId, localStream, roomName);
                 }
             }
-        });
+        };
+
+        const unsubscribe = onSnapshot(voiceRoomRef, onRoomUpdate);
         
-        // Add the current user to the voice room
         await setDoc(voiceRoomRef, {
             users: arrayUnion(appState.user.uid),
             createdAt: new Date()
         }, { merge: true });
 
-        // Update UI to show that the user is in the room
         button.textContent = 'Leave';
         button.classList.add('active');
         button.style.backgroundColor = 'var(--priority-high)';
@@ -346,77 +339,71 @@ async function handleJoinVoiceRoom(roomName, button) {
     }
 }
 
-/**
- * Initiates a new WebRTC peer connection.
- * @param {string} remoteUserId The ID of the user to connect to.
- * @param {MediaStream} localStream The local audio stream.
- */
-async function startPeerConnection(remoteUserId, localStream) {
+async function startPeerConnection(remoteUserId, localStream, roomName) {
     const peerConnection = new RTCPeerConnection(servers);
     appState.peerConnections.set(remoteUserId, peerConnection);
     
-    // Add local stream to the connection
     localStream.getTracks().forEach(track => {
         peerConnection.addTrack(track, localStream);
     });
     
-    // Handle incoming streams from remote user
     peerConnection.ontrack = (event) => {
-        // Play the audio from the remote stream
         const remoteAudio = new Audio();
         remoteAudio.srcObject = event.streams[0];
         remoteAudio.autoplay = true;
     };
     
-    // Handle ICE candidates
+    const candidatesCollection = collection(db, 'voice_rooms', roomName, 'candidates');
+    
     peerConnection.onicecandidate = async (event) => {
         if (event.candidate) {
-            await setDoc(doc(db, 'voice_rooms', appState.voiceRoomRef.id, 'candidates', appState.user.uid), {
+            await addDoc(candidatesCollection, {
                 candidate: event.candidate.toJSON(),
-                timestamp: new Date()
-            }, { merge: true });
+                sender: appState.user.uid,
+                receiver: remoteUserId,
+            });
         }
     };
     
-    // Create an offer if this is the first peer
-    if (appState.peerConnections.size === 1) {
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-        await setDoc(doc(db, 'voice_rooms', appState.voiceRoomRef.id, 'offers', appState.user.uid), {
-            sdp: offer.sdp,
-            timestamp: new Date()
+    onSnapshot(candidatesCollection, (snapshot) => {
+        snapshot.docChanges().forEach(async (change) => {
+            const data = change.doc.data();
+            if (change.type === 'added' && data.receiver === appState.user.uid) {
+                try {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                } catch (e) {
+                    console.error("Error adding received ICE candidate:", e);
+                }
+            }
         });
-    }
+    });
+
+    const offerDocRef = doc(db, 'voice_rooms', roomName, 'offers', remoteUserId);
+    const answerDocRef = doc(db, 'voice_rooms', roomName, 'answers', remoteUserId);
     
-    // Listen for offers and answers
-    onSnapshot(doc(db, 'voice_rooms', appState.voiceRoomRef.id, 'offers', remoteUserId), async (snapshot) => {
+    onSnapshot(offerDocRef, async (snapshot) => {
         const offer = snapshot.data();
         if (offer) {
             await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-            if (offer.sdp.type === 'offer') {
-                const answer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(answer);
-                await setDoc(doc(db, 'voice_rooms', appState.voiceRoomRef.id, 'answers', appState.user.uid), {
-                    sdp: answer.sdp,
-                    timestamp: new Date()
-                });
-            }
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            await setDoc(answerDocRef, answer.toJSON());
         }
     });
 
-    onSnapshot(doc(db, 'voice_rooms', appState.voiceRoomRef.id, 'answers', remoteUserId), async (snapshot) => {
+    onSnapshot(answerDocRef, async (snapshot) => {
         const answer = snapshot.data();
         if (answer) {
             await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
         }
     });
+
+    // Create a new offer for this remote peer
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    await setDoc(doc(db, 'voice_rooms', roomName, 'offers', appState.user.uid), offer.toJSON());
 }
 
-/**
- * Handles leaving a voice room.
- * @param {string} roomName The name of the voice room to leave.
- * @param {HTMLElement} button The button element that was clicked.
- */
 async function handleLeaveVoiceRoom(roomName, button) {
     if (appState.localStream) {
         appState.localStream.getTracks().forEach(track => track.stop());
@@ -424,7 +411,6 @@ async function handleLeaveVoiceRoom(roomName, button) {
     }
 
     if (appState.voiceRoomRef) {
-        // Remove user from the voice room document
         const roomDoc = await getDoc(appState.voiceRoomRef);
         if(roomDoc.exists()){
             const users = roomDoc.data().users;
@@ -432,20 +418,17 @@ async function handleLeaveVoiceRoom(roomName, button) {
             await updateDoc(appState.voiceRoomRef, { users: updatedUsers });
 
             if(updatedUsers.length === 0) {
-                // If the room is empty, clean it up
                 await deleteDoc(appState.voiceRoomRef);
             }
         }
     }
 
-    // Close all peer connections
     appState.peerConnections.forEach(pc => pc.close());
     appState.peerConnections.clear();
     appState.voiceRoomUsers.clear();
 
     showToast(`Left voice room: ${roomName}`, 'success');
 
-    // Reset the button and UI state.
     button.textContent = 'Join';
     button.classList.remove('active');
     button.style.backgroundColor = 'var(--primary-color)';
