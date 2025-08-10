@@ -12,6 +12,7 @@
             display: flex;
             height: 100vh;
             background-color: #F8F9FA;
+            overflow: hidden;
         }
 
         .chat-sidebar {
@@ -319,20 +320,6 @@
              margin-top: 1rem;
         }
 
-        .voice-room-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            padding: 0.5rem;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        .voice-room-item:hover {
-            background-color: #e9ecef;
-        }
-
         .voice-room-item-info {
             display: flex;
             align-items: center;
@@ -362,7 +349,6 @@
 <body>
     <div id="toast-container"></div>
     <div id="chat-page-container" class="hidden chat-page-container">
-        <!-- Sidebar for Projects/Channels -->
         <aside class="chat-sidebar">
             <div class="chat-sidebar-header">
                 <a href="index.html" class="back-link">
@@ -384,7 +370,6 @@
             </div>
         </aside>
 
-        <!-- Main Chat Area -->
         <main class="chat-main">
             <header class="chat-header">
                 <h1 id="current-project-name">Select a Project</h1>
@@ -405,7 +390,6 @@
             </div>
         </main>
         
-        <!-- Right Sidebar: Team Members & Voice Rooms -->
         <aside class="chat-right-sidebar">
             <h3>Team Members</h3>
             <ul id="team-list" class="space-y-2">
@@ -415,18 +399,24 @@
                 <h3>Voice Rooms</h3>
                 <ul id="voice-room-list" class="space-y-2">
                     <li class="voice-room-item" data-room-name="General Room">
-                        <div class="voice-room-item-info">
-                            <span style="font-size: 1.2rem;">🎙️</span>
-                            <span>General Room</span>
+                        <div class="voice-room-main">
+                            <div class="voice-room-item-info">
+                                <span style="font-size: 1.2rem;">🎙️</span>
+                                <span>General Room</span>
+                            </div>
+                            <button class="join-voice-room-btn">Join</button>
                         </div>
-                        <button class="join-voice-room-btn">Join</button>
+                        <div class="voice-room-members hidden"></div>
                     </li>
                     <li class="voice-room-item" data-room-name="Design Meeting">
-                        <div class="voice-room-item-info">
-                            <span style="font-size: 1.2rem;">🎙️</span>
-                            <span>Design Meeting</span>
+                        <div class="voice-room-main">
+                            <div class="voice-room-item-info">
+                                <span style="font-size: 1.2rem;">🎙️</span>
+                                <span>Design Meeting</span>
+                            </div>
+                            <button class="join-voice-room-btn">Join</button>
                         </div>
-                        <button class="join-voice-room-btn">Join</button>
+                        <div class="voice-room-members hidden"></div>
                     </li>
                 </ul>
             </div>
