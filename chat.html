@@ -6,42 +6,310 @@
     <title>Team Chat - ActionPad</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js"></script>
+    <style>
+        .chat-page-container {
+            display: grid;
+            grid-template-columns: 260px 1fr 240px;
+            height: 100vh;
+            background-color: var(--background-color);
+        }
+        .chat-sidebar {
+            background-color: #f8f9fa;
+            border-right: 1px solid var(--border-color);
+            padding: 1.5rem;
+            overflow-y: auto;
+        }
+        .chat-sidebar .project-item {
+            width: 100%;
+            text-align: left;
+            padding: 0.75rem 1rem;
+            background: none;
+            border: none;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: background-color 0.2s, color 0.2s;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .chat-sidebar .project-item.active {
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: 600;
+        }
+        .chat-sidebar .project-item:hover {
+            background-color: #e9ecef;
+        }
+        .chat-main-panel {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+        .chat-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 2rem;
+            background: var(--surface-color);
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        .chat-header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        .back-to-app-link {
+            color: var(--subtle-text-color);
+            text-decoration: none;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .chat-message {
+            display: flex;
+            gap: 1rem;
+            max-width: 75%;
+            align-items: flex-start;
+        }
+        .chat-message.is-self {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+        }
+        .chat-message .chat-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+        .chat-message-content {
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-message-header {
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+            margin-bottom: 0.2rem;
+        }
+        .chat-author {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .chat-timestamp {
+            font-size: 0.75rem;
+            color: var(--subtle-text-color);
+        }
+        .chat-text {
+            background-color: var(--surface-color);
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            white-space: pre-wrap;
+            box-shadow: var(--shadow);
+        }
+        .chat-message.is-self .chat-text {
+            background-color: var(--primary-color);
+            color: white;
+            border-radius: 12px;
+            border-bottom-right-radius: 4px;
+        }
+        .chat-message.is-self .chat-message-header {
+            flex-direction: row-reverse;
+        }
+        .chat-message.is-self .chat-author {
+            margin-right: auto;
+        }
+        .chat-message:not(.is-self) .chat-text {
+             border-bottom-left-radius: 4px;
+        }
+        .chat-message-input-area {
+            flex-shrink: 0;
+            padding: 1rem;
+            border-top: 1px solid var(--border-color);
+            background-color: var(--surface-color);
+        }
+        .chat-message-input-area form {
+            display: flex;
+            gap: 1rem;
+        }
+        .chat-message-input-area input {
+            flex-grow: 1;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+        }
+        .chat-message-input-area button {
+            padding: 0.75rem 1.5rem;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .chat-message-input-area button:hover {
+            background-color: #357ABD;
+        }
+        .chat-right-sidebar {
+            background-color: #f8f9fa;
+            border-left: 1px solid var(--border-color);
+            padding: 1.5rem;
+            overflow-y: auto;
+        }
+        .chat-right-sidebar h3, .chat-sidebar h3 {
+             font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--subtle-text-color);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 0 0 1rem 0;
+        }
+        .team-member-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0.5rem;
+            border-radius: 6px;
+            transition: background-color 0.2s;
+        }
+        .team-member-item:hover {
+            background-color: #e9ecef;
+        }
+        .team-member-item .avatar-img {
+             width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        .presence-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 2px solid #FCFCFC;
+            position: relative;
+            left: -12px;
+            top: 12px;
+        }
+        .presence-dot.online { background-color: var(--online-color); }
+        .presence-dot.offline { background-color: #ced4da; }
+        .team-member-item span {
+            font-weight: 500;
+            color: var(--text-color);
+        }
+        .task-message {
+            background-color: #e6f0ff;
+            border-left: 4px solid var(--primary-color);
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .task-message.done {
+            background-color: #e8f5e9;
+            border-left-color: var(--priority-low);
+        }
+        .task-message h4 {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+        .task-message p {
+            margin: 0;
+            font-size: 0.9rem;
+            color: var(--subtle-text-color);
+        }
+        .task-message.done h4 {
+            text-decoration: line-through;
+            color: var(--subtle-text-color);
+        }
+        .task-message .task-status-icon {
+            width: 24px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+        .loader-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-grow: 1;
+            font-size: 1.2rem;
+            color: var(--subtle-text-color);
+        }
+    </style>
 </head>
-<body>
+<body id="chat-page-body">
     <div id="toast-container"></div>
-    <div id="chat-page-container" class="hidden">
-        <header class="main-header">
-            <div class="header-left">
+    <div id="chat-page-container" class="chat-page-container">
+        <!-- Left Sidebar: Projects -->
+        <aside class="chat-sidebar">
+            <header class="flex items-center justify-between pb-4 mb-4 border-b border-gray-200">
+                <h3 class="!mt-0">Projects</h3>
                 <a href="index.html" class="back-to-app-link">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-                    Back to Tasks
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
                 </a>
-                <h1 id="chat-company-name">Team Chat</h1>
-            </div>
-            <div class="header-controls">
-                <div id="user-info">
-                    <img id="user-avatar-header" src="https://placehold.co/40x40/E9ECEF/495057?text=A" alt="User Avatar" class="avatar-header">
-                    <div>
-                        <span id="user-nickname"></span>
-                    </div>
-                </div>
-                <button id="logout-button" data-i18n="logout">Logout</button>
-            </div>
-        </header>
+            </header>
+            <ul id="project-list" class="space-y-2">
+                <li class="project-item active" data-project-id="all">
+                    <span class="project-icon">#</span>
+                    <span>All Tasks (Chat)</span>
+                </li>
+            </ul>
+        </aside>
 
-        <main class="chat-main">
-            <div id="full-chat-messages">
-                <div class="loader">Loading messages...</div>
+        <!-- Main Chat Panel -->
+        <main class="chat-main-panel">
+            <div id="chat-header" class="chat-header">
+                <h1># <span id="chat-project-name">General</span></h1>
             </div>
-            <form id="full-chat-form">
-                <div class="comment-input-wrapper">
-                     <input type="text" id="full-chat-input" placeholder="Type a message..." required autocomplete="off">
-                     <button type="submit">Send</button>
-                </div>
-            </form>
+            <div id="chat-messages" class="chat-messages">
+                <!-- Messages and Tasks will be rendered here -->
+                <div class="loader-container">Loading...</div>
+            </div>
+            <div class="chat-message-input-area">
+                <form id="chat-form">
+                    <input type="text" id="chat-input" placeholder="Message #general..." required>
+                    <button type="submit">Send</button>
+                </form>
+            </div>
         </main>
+
+        <!-- Right Sidebar: Team Members -->
+        <aside class="chat-right-sidebar">
+            <h3 id="team-list-header">Team</h3>
+            <ul id="team-list" class="space-y-2">
+                <div class="loader-container">Loading...</div>
+            </ul>
+        </aside>
     </div>
 
+    <script type="module" src="js/firebase-config.js"></script>
+    <script type="module" src="js/services/user.js"></script>
+    <script type="module" src="js/services/company.js"></script>
+    <script type="module" src="js/services/project.js"></script>
+    <script type="module" src="js/services/task.js"></script>
+    <script type="module" src="js/services/presence.js"></script>
+    <script type="module" src="js/services/chat.js"></script>
+    <script type="module" src="js/toast.js"></script>
     <script type="module" src="js/chat.js"></script>
 </body>
 </html>
