@@ -1,15 +1,15 @@
 // FILE: js/services/task.js
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs, query, where, serverTimestamp, onSnapshot, orderBy } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs, query, where, serverTimestamp, onSnapshot, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { db } from '../firebase-config.js';
 import { showToast } from '../toast.js';
 import { getCompany } from './company.js';
 
-const tasksCollection = collection(db, 'tasks');
-const projectsCollection = collection(db, 'projects');
+const getTasksCollection = () => collection(db, 'tasks');
+const getProjectsCollection = () => collection(db, 'projects');
 
 export const addTask = (taskData, companyId, author) => {
     const language = localStorage.getItem('actionPadLanguage') || 'en';
-    return addDoc(tasksCollection, {
+    return addDoc(getTasksCollection(), {
         ...taskData,
         companyId,
         author: { uid: author.uid, nickname: author.nickname },
@@ -23,23 +23,23 @@ export const addTask = (taskData, companyId, author) => {
     });
 }
 
-export const getTask = (taskId) => getDoc(doc(tasksCollection, taskId));
+export const getTask = (taskId) => getDoc(doc(getTasksCollection(), taskId));
 
 export const updateTask = (taskId, updatedData) => {
-    return updateDoc(doc(tasksCollection, taskId), { ...updatedData, updatedAt: serverTimestamp() });
+    return updateDoc(doc(getTasksCollection(), taskId), { ...updatedData, updatedAt: serverTimestamp() });
 };
 
-export const deleteTask = (taskId) => deleteDoc(doc(tasksCollection, taskId));
+export const deleteTask = (taskId) => deleteDoc(doc(getTasksCollection(), taskId));
 
 export const listenToCompanyTasks = (companyId, projectId, callback) => {
     let q;
     if (projectId === 'all') {
-        q = query(tasksCollection,
+        q = query(getTasksCollection(),
             where("companyId", "==", companyId),
             orderBy("order", "asc")
         );
     } else {
-        q = query(tasksCollection,
+        q = query(getTasksCollection(),
             where("companyId", "==", companyId),
             where("projectId", "==", projectId),
             orderBy("order", "asc")
@@ -61,7 +61,7 @@ export const listenToCompanyTasks = (companyId, projectId, callback) => {
 };
 
 export const getTasksAssignedToUser = async (userId) => {
-    const q = query(tasksCollection, where("assignedTo", "array-contains", userId));
+    const q = query(getTasksCollection(), where("assignedTo", "array-contains", userId));
     const querySnapshot = await getDocs(q);
 
     const tasks = [];
@@ -73,7 +73,7 @@ export const getTasksAssignedToUser = async (userId) => {
             taskData.companyName = companySnap.exists() ? companySnap.data().name : 'Unknown Company';
         }
         if(taskData.projectId) {
-            const projectSnap = await getDoc(doc(projectsCollection, taskData.projectId));
+            const projectSnap = await getDoc(doc(getProjectsCollection(), taskData.projectId));
             taskData.projectName = projectSnap.exists() ? projectSnap.data().name : 'No Project';
         }
         tasks.push(taskData);
@@ -82,7 +82,7 @@ export const getTasksAssignedToUser = async (userId) => {
 };
 
 export const getTasksForProject = async (projectId) => {
-    const q = query(tasksCollection, where("projectId", "==", projectId));
+    const q = query(getTasksCollection(), where("projectId", "==", projectId));
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
@@ -92,7 +92,7 @@ export const getUpcomingDeadlines = async (userId) => {
     const nextWeek = new Date();
     nextWeek.setDate(today.getDate() + 7);
 
-    const q = query(tasksCollection,
+    const q = query(getTasksCollection(),
         where("assignedTo", "array-contains", userId),
         where("dueDate", ">=", today.toISOString().split('T')[0]),
         where("dueDate", "<=", nextWeek.toISOString().split('T')[0]),

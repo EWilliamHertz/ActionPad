@@ -1,17 +1,17 @@
 // FILE: js/services/company.js
-import { collection, addDoc, doc, getDoc, getDocs, query, where, serverTimestamp, arrayUnion, updateDoc } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
-import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js";
+import { collection, addDoc, doc, getDoc, getDocs, query, where, serverTimestamp, arrayUnion, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 import { db, storage } from '../firebase-config.js';
 import { usersCollection } from './firestore.js';
 import { listenToCompanyPresence as originalListen } from './presence.js';
 
-const companiesCollection = collection(db, 'companies');
+const getCompaniesCollection = () => collection(db, 'companies');
 
-export const getCompany = (companyId) => getDoc(doc(companiesCollection, companyId));
+export const getCompany = (companyId) => getDoc(doc(getCompaniesCollection(), companyId));
 
 export const createNewCompany = async (user, companyName, userRole) => {
     // FIX: Add ownerId and the initial members array to the new company document.
-    const newCompanyRef = await addDoc(companiesCollection, {
+    const newCompanyRef = await addDoc(getCompaniesCollection(), {
         name: companyName,
         ownerId: user.uid,
         members: [user.uid],
@@ -19,7 +19,7 @@ export const createNewCompany = async (user, companyName, userRole) => {
         createdAt: serverTimestamp()
     });
     const companyId = newCompanyRef.id;
-    const userRef = doc(usersCollection, user.uid);
+    const userRef = doc(usersCollection(), user.uid);
 
     await updateDoc(userRef, {
         companies: arrayUnion({
@@ -32,7 +32,7 @@ export const createNewCompany = async (user, companyName, userRole) => {
 };
 
 export const joinCompanyWithReferralId = async (user, referralId, role) => {
-    const q = query(companiesCollection, where("referralId", "==", Number(referralId)));
+    const q = query(getCompaniesCollection(), where("referralId", "==", Number(referralId)));
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
@@ -41,7 +41,7 @@ export const joinCompanyWithReferralId = async (user, referralId, role) => {
 
     const companyDoc = querySnapshot.docs[0];
     const companyId = companyDoc.id;
-    const userRef = doc(usersCollection, user.uid);
+    const userRef = doc(usersCollection(), user.uid);
 
     // FIX: Add the new member to the company's 'members' array.
     await updateDoc(companyDoc.ref, {
@@ -59,7 +59,7 @@ export const joinCompanyWithReferralId = async (user, referralId, role) => {
 };
 
 export const updateUserRole = async (companyId, userId, newRole) => {
-    const userRef = doc(usersCollection, userId);
+    const userRef = doc(usersCollection(), userId);
     const userSnap = await getDoc(userRef);
 
     if (userSnap.exists()) {
