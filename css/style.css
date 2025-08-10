@@ -770,3 +770,94 @@ main { padding: 2rem; overflow-y: auto; }
         box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
     }
 }
+/* Add these new styles to the end of your existing style.css file */
+
+/* NEW: Voice Controls Panel Styles */
+.voice-controls {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    background-color: #f1f3f5;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+.voice-connection-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    font-weight: 500;
+}
+.voice-status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: var(--online-color);
+    animation: pulse-animation 1.5s infinite;
+}
+.voice-buttons {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+}
+.voice-btn {
+    background-color: #e9ecef;
+    border: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-color);
+    transition: background-color 0.2s;
+}
+.voice-btn:hover {
+    background-color: #ced4da;
+}
+.voice-btn.active {
+    background-color: var(--primary-color);
+    color: white;
+}
+.voice-btn.disconnect {
+    background-color: #dc3545;
+    color: white;
+}
+.voice-btn.disconnect:hover {
+    background-color: #c82333;
+}
+
+#my-tasks-widget .widget-view-all-link {
+    display: block;
+    margin-top: 1rem;
+    text-align: right;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--primary-color);
+    text-decoration: none;
+}
+#my-tasks-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+.widget-task-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+.widget-task-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.widget-empty-state {
+    color: var(--subtle-text-color);
+    font-size: 0.9rem;
+    padding: 1rem 0;
+    text-align: center;
+}
