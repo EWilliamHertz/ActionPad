@@ -62,7 +62,33 @@
                     <button type="submit">Update Password</button>
                 </form>
             </div>
+
+            <div class="settings-card danger-zone">
+                <h2>Danger Zone</h2>
+                <p>Deleting your account is permanent and cannot be undone. All your data will be removed.</p>
+                <button id="delete-account-button" class="btn-danger">Delete Account</button>
+            </div>
         </main>
+    </div>
+
+    <!-- Delete Account Confirmation Modal -->
+    <div id="delete-account-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <button class="modal-close">&times;</button>
+            <h3>Confirm Account Deletion</h3>
+            <p>This action is irreversible. To confirm, please enter your password.</p>
+            <form id="delete-account-form">
+                <div class="form-group">
+                    <label for="delete-password">Password</label>
+                    <input type="password" id="delete-password" required>
+                    <div class="validation-error"></div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary modal-close">Cancel</button>
+                    <button type="submit" class="btn-danger">I understand, delete my account</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <script type="module" src="js/settings.js"></script>
