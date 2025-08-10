@@ -3,107 +3,98 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ActionPad - Dashboard</title>
+    <title>Your Dashboard - ActionPad</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        /* Styles specific to the dashboard for better layout */
-        .dashboard-container { max-width: 1200px; margin: 2rem auto; padding: 0 2rem; }
-        .dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
-        .dashboard-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; }
-        .companies-section, .widgets-section { display: flex; flex-direction: column; gap: 1.5rem; }
-        .widget { background: #fff; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .widget h3 { margin-top: 0; margin-bottom: 1rem; font-size: 1.1rem; }
-        #companies-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; }
-        .company-card { background: #fff; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
-        .company-card:hover { transform: translateY(-3px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        .company-card h3 { margin: 0 0 0.5rem 0; }
-        .company-card p { margin: 0; color: #6c757d; font-size: 0.9rem; }
-        .dashboard-actions { margin-top: 1.5rem; display: flex; gap: 1rem; }
-        .loader { text-align: center; padding: 3rem; color: #6c757d; }
-        .error { text-align: center; padding: 3rem; color: #e53e3e; }
-    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-
-    <div class="dashboard-container">
-        <header class="dashboard-header">
-            <h1>ActionPad Dashboard</h1>
-            <div>
-                <a href="index.html" class="btn-secondary">Go to Main App</a>
-                <button id="logout-button" class="btn-danger">Logout</button>
+    <div id="toast-container"></div>
+    <div class="dashboard-page-container">
+        <header class="main-header">
+            <div class="header-left">
+                <h1>ActionPad Dashboard</h1>
+            </div>
+            <div class="header-controls">
+                 <div id="user-info">
+                    <img id="user-avatar-header" src="https://placehold.co/40x40/E9ECEF/495057?text=A" alt="User Avatar" class="avatar-header">
+                    <div>
+                        <span id="user-nickname"></span>
+                    </div>
+                </div>
+                <button id="logout-button">Logout</button>
             </div>
         </header>
 
-        <main id="dashboard-main-content">
+        <main class="dashboard-main">
             <div class="dashboard-grid">
-                <!-- Left Column: Companies -->
-                <section class="companies-section">
-                    <h2>Your Companies</h2>
-                    <div id="companies-container" class="widget">
-                        <!-- Company cards will be rendered here by JS -->
-                        <div class="loader">Loading companies...</div>
+                <div class="main-content">
+                    <div class="dashboard-main-header">
+                        <h2>Your Companies</h2>
+                        <a href="index.html" id="my-tasks-btn" class="dashboard-action-btn">Go to Main App</a>
                     </div>
-                    <div class="dashboard-actions">
-                        <button id="join-company-btn" class="btn-secondary">Join Another Company</button>
-                        <button id="create-company-btn" class="btn-primary">Create a New Company</button>
+                    <div id="company-cards-container" class="company-cards-grid">
+                        <div class="skeleton-card"></div>
+                        <div class="skeleton-card"></div>
                     </div>
-                </section>
-
-                <!-- Right Column: Widgets -->
-                <aside class="widgets-section">
-                    <div id="tasks-by-status-widget" class="widget">
-                        <h3>Tasks by Status</h3>
-                        <div id="tasks-by-status">
-                            <!-- Task status will be rendered here by JS -->
-                            <div class="loader">Loading tasks...</div>
+                </div>
+                <aside class="dashboard-sidebar">
+                    <div id="task-status-widget" class="dashboard-widget">
+                        <h4>Tasks by Status</h4>
+                        <div style="position: relative; height:250px;">
+                            <canvas id="task-status-chart"></canvas>
                         </div>
                     </div>
-                    <div id="upcoming-deadlines-widget" class="widget">
-                        <h3>Upcoming Deadlines</h3>
-                        <div id="upcoming-deadlines">
-                            <!-- Deadlines will be rendered here by JS -->
-                            <div class="loader">Loading deadlines...</div>
-                        </div>
+                    <div id="upcoming-deadlines-widget" class="dashboard-widget">
+                        <h4>Upcoming Deadlines</h4>
+                        <div class="skeleton-widget-item"></div>
+                        <div class="skeleton-widget-item"></div>
                     </div>
                 </aside>
+            </div>
+             <div class="dashboard-actions">
+                <button id="join-company-btn">Join Another Company</button>
+                <button id="create-company-btn">Create a New Company</button>
             </div>
         </main>
     </div>
 
-    <!-- Modals -->
-    <div id="create-company-modal" class="modal hidden">
+    <div id="join-company-modal" class="modal-overlay hidden">
         <div class="modal-content">
-            <span class="modal-close">&times;</span>
-            <h2>Create a New Company</h2>
-            <form id="create-company-form">
-                <div class="form-group">
-                    <label for="new-company-name">Company Name</label>
-                    <input type="text" id="new-company-name" required>
-                </div>
-                <button type="submit" class="btn-primary">Create Company</button>
-            </form>
-        </div>
-    </div>
-
-    <div id="join-company-modal" class="modal hidden">
-        <div class="modal-content">
-            <span class="modal-close">&times;</span>
-            <h2>Join a Company</h2>
+            <button class="modal-close">&times;</button>
+            <h3>Join an Existing Company</h3>
             <form id="join-company-form">
                 <div class="form-group">
-                    <label for="join-referral-id">Referral ID</label>
-                    <input type="text" id="join-referral-id" placeholder="e.g., ref-a1b2c3" required>
+                    <label for="join-referral-id">Company Referral ID</label>
+                    <input type="text" id="join-referral-id" required>
                 </div>
-                <button type="submit" class="btn-primary">Join Company</button>
+                <div class="form-group">
+                    <label for="join-company-role">Your Role</label>
+                    <input type="text" id="join-company-role" placeholder="e.g., Designer" required>
+                </div>
+                <button type="submit">Join Company</button>
             </form>
         </div>
     </div>
 
-    <script type="module" src="js/firebase-config.js"></script>
-    <script type="module" src="js/toast.js"></script>
-    <script type="module" src="js/i18n.js"></script>
-    <script type="module" src="js/dashboard.js"></script>
+    <div id="create-company-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <button class="modal-close">&times;</button>
+            <h3>Create a New Company</h3>
+            <form id="create-company-form">
+                <div class="form-group">
+                    <label for="create-company-name">Company Name</label>
+                    <input type="text" id="create-company-name" required>
+                </div>
+                 <div class="form-group">
+                    <label for="create-company-role">Your Role</label>
+                    <input type="text" id="create-company-role" required>
+                </div>
+                <button type="submit">Create and Switch</button>
+            </form>
+        </div>
+    </div>
 
+    <script type="module" src="js/dashboard.js"></script>
 </body>
 </html>
