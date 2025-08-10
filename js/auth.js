@@ -176,10 +176,15 @@ function setupReferralId(form) {
     const urlParams = new URLSearchParams(window.location.search);
     const refId = urlParams.get('ref');
     if (refId) {
-        form.querySelector('#register-referralid').value = refId;
         const companyNameInput = form.querySelector('#register-companyname');
+        const companyRoleInput = form.querySelector('#register-companyrole');
+
+        form.querySelector('#register-referralid').value = refId;
         companyNameInput.disabled = true;
         companyNameInput.value = "Joining existing company...";
+
+        companyRoleInput.value = "Member";
+        companyRoleInput.disabled = true;
     }
 }
 
