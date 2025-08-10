@@ -1,7 +1,7 @@
 import { doc, updateDoc, getDoc, arrayUnion, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 import { storage, db } from '../firebase-config.js';
-https://github.com/EWilliamHertz/ActionPad/edit/main/js/services/attachment.js
+
 export const uploadTaskAttachment = async (taskId, file) => {
     const filePath = `task_attachments/${taskId}/${Date.now()}_${file.name}`;
     const fileRef = storageRef(storage, filePath);
