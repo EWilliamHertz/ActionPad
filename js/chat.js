@@ -15,10 +15,11 @@ import { doc, collection, onSnapshot, updateDoc, arrayUnion, arrayRemove, setDoc
 let appState = {
     user: null, profile: null, company: null, projects: [], team: [],
     selectedProjectId: null,
-    listeners: {}, // Central object to hold all unsubscribe functions
+    listeners: {},
     localStream: null,
-    peerConnections: new Map(), // key: remoteUserId, value: RTCPeerConnection
-    currentVoiceRoom: null, // { name, uniqueId }
+    peerConnections: new Map(),
+    candidateQueue: new Map(), // To prevent race conditions
+    currentVoiceRoom: null,
 };
 
 // --- DOM ELEMENTS ---
@@ -61,7 +62,10 @@ async function initialize() {
     appState.profile = { uid: appState.user.uid, ...profileSnap.data() };
 
     const companyId = localStorage.getItem('selectedCompanyId');
-    if (!companyId) throw new Error("No company selected.");
+    if (!companyId) {
+        window.location.replace('dashboard.html'); // FIX for redirect loop
+        return;
+    }
     const companySnap = await getCompany(companyId);
     if (!companySnap.exists()) throw new Error("Company not found.");
     appState.company = { id: companySnap.id, ...companySnap.data() };
@@ -86,18 +90,11 @@ function setupListeners() {
     appState.listeners.team = listenToCompanyPresence(appState.company.id, (team) => {
         appState.team = team;
         renderTeamList();
-        if (appState.currentVoiceRoom) {
-            // Re-render voice rooms if team data changes (e.g., for avatars)
-            const roomRef = doc(db, 'voice_rooms', appState.currentVoiceRoom.uniqueId);
-            getDoc(roomRef).then(docSnap => {
-                if(docSnap.exists()) renderVoiceRooms([docSnap.data()]);
-            });
-        }
     });
 
     const voiceRoomsQuery = query(collection(db, 'voice_rooms'), where('companyId', '==', appState.company.id));
     appState.listeners.voiceRooms = onSnapshot(voiceRoomsQuery, (snapshot) => {
-        const roomsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const roomsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), name: doc.data().name || "Unknown Room" }));
         renderVoiceRooms(roomsData);
     });
 }
@@ -117,7 +114,7 @@ function setupUIEvents() {
     DOM.voiceRoomList.addEventListener('click', (e) => {
         const joinBtn = e.target.closest('.join-voice-room-btn');
         if (joinBtn) {
-            e.stopPropagation(); // Prevent dropdown from toggling
+            e.stopPropagation();
             const roomItem = joinBtn.closest('.voice-room-item');
             const roomName = roomItem.dataset.roomName;
             if (joinBtn.classList.contains('active')) {
@@ -185,7 +182,7 @@ async function handleJoinVoiceRoom(roomName) {
         
         for (const remoteId of remoteUsers) {
             if (!appState.peerConnections.has(remoteId)) {
-                createPeerConnection(remoteId);
+                createPeerConnection(remoteId, true);
             }
         }
         
@@ -200,6 +197,16 @@ async function handleJoinVoiceRoom(roomName) {
         });
         renderVoiceRooms([{ id: uniqueId, ...doc.data() }]);
     });
+
+    const signalingRef = collection(db, 'voice_rooms', uniqueId, 'signaling');
+    const incomingMessagesQuery = query(signalingRef, where('to', '==', appState.user.uid));
+    appState.listeners.signaling = onSnapshot(incomingMessagesQuery, (snapshot) => {
+        snapshot.docChanges().forEach(change => {
+            if (change.type === 'added') {
+                handleSignalingMessage(change.doc.data());
+            }
+        });
+    });
     
     updateVoiceRoomUI();
 }
@@ -210,35 +217,32 @@ async function handleLeaveVoiceRoom() {
     const { uniqueId, name } = appState.currentVoiceRoom;
     const roomRef = doc(db, 'voice_rooms', uniqueId);
     
-    if (appState.listeners.voiceRoomUsers) appState.listeners.voiceRoomUsers();
-    
+    // Clean up all dynamic listeners related to the voice room
     Object.keys(appState.listeners).forEach(key => {
-        if(key.startsWith('pc_')) appState.listeners[key]();
+        if (key.startsWith('pc_') || key === 'signaling' || key === 'voiceRoomUsers') {
+            if (appState.listeners[key]) appState.listeners[key]();
+            delete appState.listeners[key];
+        }
     });
-
+    
     appState.peerConnections.forEach(pc => pc.close());
     appState.peerConnections.clear();
     remoteAudioStreams.forEach(audio => audio.remove());
     remoteAudioStreams.clear();
+    appState.candidateQueue.clear();
 
     if (appState.localStream) {
         appState.localStream.getTracks().forEach(track => track.stop());
         appState.localStream = null;
     }
 
-    await updateDoc(roomRef, { users: arrayRemove(appState.user.uid) });
-
     const roomSnap = await getDoc(roomRef);
-    if ((roomSnap.data()?.users || []).length === 0) {
-        const batch = writeBatch(db);
-        const subcollections = ['offers', 'answers', 'candidates'];
-        for (const sub of subcollections) {
-            const subcollRef = collection(db, 'voice_rooms', uniqueId, sub);
-            const snapshot = await getDocs(subcollRef);
-            snapshot.docs.forEach(doc => batch.delete(doc.ref));
+    if (roomSnap.exists()) {
+        await updateDoc(roomRef, { users: arrayRemove(appState.user.uid) });
+        const updatedSnap = await getDoc(roomRef);
+        if ((updatedSnap.data()?.users || []).length === 0) {
+            await deleteDoc(roomRef);
         }
-        await batch.commit();
-        await deleteDoc(roomRef);
     }
 
     showToast(`Left voice room: ${name}`, 'success');
@@ -246,9 +250,12 @@ async function handleLeaveVoiceRoom() {
     updateVoiceRoomUI();
 }
 
-async function createPeerConnection(remoteId) {
+async function createPeerConnection(remoteId, isInitiator = false) {
+    if (appState.peerConnections.has(remoteId)) return;
+    
     const pc = new RTCPeerConnection(servers);
     appState.peerConnections.set(remoteId, pc);
+    appState.candidateQueue.set(remoteId, []);
 
     appState.localStream.getTracks().forEach(track => pc.addTrack(track, appState.localStream));
 
@@ -270,30 +277,54 @@ async function createPeerConnection(remoteId) {
             addDoc(signalingRef, { from: appState.user.uid, to: remoteId, candidate: event.candidate.toJSON() });
         }
     };
+    
+    if (isInitiator) {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await addDoc(signalingRef, { from: appState.user.uid, to: remoteId, offer: offer.toJSON() });
+    }
+}
 
-    appState.listeners[`pc_${remoteId}`] = onSnapshot(query(signalingRef, where('to', '==', appState.user.uid), where('from', '==', remoteId)), (snapshot) => {
-        snapshot.docChanges().forEach(async change => {
-            if (change.type === 'added') {
-                const data = change.doc.data();
-                if (data.offer) {
-                    await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-                    const answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-                    await addDoc(signalingRef, { from: appState.user.uid, to: remoteId, answer });
-                } else if (data.answer) {
-                    if (!pc.currentRemoteDescription) {
-                        await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-                    }
-                } else if (data.candidate) {
-                    await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-                }
+async function handleSignalingMessage(data) {
+    const { from: remoteId } = data;
+    let pc = appState.peerConnections.get(remoteId);
+
+    if (data.offer && !pc) {
+        createPeerConnection(remoteId, false);
+        pc = appState.peerConnections.get(remoteId);
+    }
+    
+    if (!pc) return;
+
+    try {
+        if (data.offer) {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            const { uniqueId } = appState.currentVoiceRoom;
+            const signalingRef = collection(db, 'voice_rooms', uniqueId, 'signaling');
+            await addDoc(signalingRef, { from: appState.user.uid, to: remoteId, answer: answer.toJSON() });
+        } else if (data.answer) {
+            if (pc.signalingState !== 'stable') {
+                await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
             }
-        });
-    });
+        } else if (data.candidate) {
+            if (pc.remoteDescription) {
+                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+            } else {
+                appState.candidateQueue.get(remoteId).push(data.candidate);
+            }
+        }
 
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    await addDoc(signalingRef, { from: appState.user.uid, to: remoteId, offer });
+        if (pc.remoteDescription && appState.candidateQueue.has(remoteId)) {
+            const queue = appState.candidateQueue.get(remoteId);
+            while (queue.length > 0) {
+                await pc.addIceCandidate(new RTCIceCandidate(queue.shift()));
+            }
+        }
+    } catch (error) {
+        console.error("Error handling signaling message:", error);
+    }
 }
 
 function updateVoiceRoomUI() {
@@ -312,23 +343,17 @@ function updateVoiceRoomUI() {
     });
 }
 
-
-// --- Functions below are unchanged but included for completeness ---
+// --- Unchanged Functions ---
 function switchProject(projectId) {
     if (appState.listeners.chat) appState.listeners.chat();
     if (appState.listeners.tasks) appState.listeners.tasks();
-
     appState.selectedProjectId = projectId;
     const project = appState.projects.find(p => p.id === projectId);
-    
     DOM.chatProjectName.textContent = project ? project.name : 'General';
-    
     document.querySelectorAll('.project-item-chat').forEach(item => {
         item.classList.toggle('active', item.dataset.projectId === projectId);
     });
-
     DOM.chatMessages.innerHTML = '<div class="loader">Loading...</div>';
-
     appState.listeners.tasks = listenToCompanyTasks(appState.company.id, projectId, (tasks) => {
         appState.tasks = tasks;
         appState.listeners.chat = listenToProjectChat(projectId, (messages) => {
@@ -339,32 +364,17 @@ function switchProject(projectId) {
 }
 function renderChatContent(tasks, messages) {
     DOM.chatMessages.innerHTML = '';
-    
     if (tasks.length > 0) {
         const taskMessageEl = document.createElement('div');
         taskMessageEl.className = 'chat-tasks-message';
-        taskMessageEl.innerHTML = `
-            <h4>Project Tasks</h4>
-            <ul>
-                ${tasks.map(task => `
-                    <li class="${task.status}">
-                        <span class="task-status-dot ${task.status}"></span>
-                        <span>${task.name}</span>
-                    </li>
-                `).join('')}
-            </ul>
-        `;
+        taskMessageEl.innerHTML = `<h4>Project Tasks</h4><ul>${tasks.map(task => `<li class="${task.status}"><span class="task-status-dot ${task.status}"></span><span>${task.name}</span></li>`).join('')}</ul>`;
         DOM.chatMessages.appendChild(taskMessageEl);
     }
-    
     if (messages.length === 0 && tasks.length === 0) {
         DOM.chatMessages.innerHTML = '<div class="loader">Start the conversation!</div>';
     } else {
-         messages.forEach(message => {
-            renderChatMessage(message);
-        });
+         messages.forEach(message => renderChatMessage(message));
     }
-
     DOM.chatMessages.scrollTop = DOM.chatMessages.scrollHeight;
 }
 function renderProjectList() {
@@ -374,10 +384,7 @@ function renderProjectList() {
         const listItem = document.createElement('div');
         listItem.className = `project-item-chat ${appState.selectedProjectId === project.id ? 'active' : ''}`;
         listItem.dataset.projectId = project.id;
-        listItem.innerHTML = `
-            <span class="project-icon">#</span>
-            <span>${project.name}</span>
-        `;
+        listItem.innerHTML = `<span class="project-icon">#</span><span>${project.name}</span>`;
         DOM.projectList.appendChild(listItem);
     });
 }
@@ -388,11 +395,7 @@ function renderTeamList() {
         const item = document.createElement('li');
         const isOnline = member.online;
         item.className = 'team-member-item';
-        item.innerHTML = `
-            <img src="${member.avatarURL || `https://placehold.co/36x36/E9ECEF/495057?text=${member.nickname.charAt(0).toUpperCase()}`}" alt="${member.nickname}" class="avatar-img">
-            <span class="presence-dot ${isOnline ? 'online' : 'offline'}"></span>
-            <span>${member.nickname}</span>
-        `;
+        item.innerHTML = `<img src="${member.avatarURL || `https://placehold.co/36x36/E9ECEF/495057?text=${member.nickname.charAt(0).toUpperCase()}`}" alt="${member.nickname}" class="avatar-img"><span class="presence-dot ${isOnline ? 'online' : 'offline'}"></span><span>${member.nickname}</span>`;
         DOM.teamList.appendChild(item);
     });
 }
@@ -402,30 +405,14 @@ function renderChatMessage(message) {
     messageEl.className = `chat-message-full ${isSelf ? 'is-self' : ''}`;
     const avatarSrc = message.author.avatarURL || `https://placehold.co/40x40/E9ECEF/495057?text=${message.author.nickname.charAt(0).toUpperCase()}`;
     const timestamp = message.createdAt ? message.createdAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '';
-
-    messageEl.innerHTML = `
-        <img src="${avatarSrc}" alt="${message.author.nickname}" class="chat-avatar">
-        <div class="chat-message-content">
-            <div class="chat-message-header">
-                <span class="chat-author">${message.author.nickname}</span>
-                <span class="chat-timestamp">${timestamp}</span>
-            </div>
-            <div class="chat-text">${message.text}</div>
-        </div>
-    `;
+    messageEl.innerHTML = `<img src="${avatarSrc}" alt="${message.author.nickname}" class="chat-avatar"><div class="chat-message-content"><div class="chat-message-header"><span class="chat-author">${message.author.nickname}</span><span class="chat-timestamp">${timestamp}</span></div><div class="chat-text">${message.text}</div></div>`;
     DOM.chatMessages.appendChild(messageEl);
 }
 async function handleSendMessage(e) {
     e.preventDefault();
     const text = DOM.chatInput.value.trim();
     if (!text || !appState.selectedProjectId) return;
-
-    const author = {
-        uid: appState.user.uid,
-        nickname: appState.profile.nickname,
-        avatarURL: appState.profile.avatarURL || null,
-    };
-
+    const author = { uid: appState.user.uid, nickname: appState.profile.nickname, avatarURL: appState.profile.avatarURL || null };
     try {
         await addChatMessage(appState.selectedProjectId, author, text);
         DOM.chatInput.value = '';
@@ -438,16 +425,12 @@ async function handleAddProject(e) {
     e.preventDefault();
     const projectName = document.getElementById('new-project-input-chat').value.trim();
     if (!projectName || !appState.company || !appState.user) return;
-
     try {
-        await addProject({
-            name: projectName,
-            companyId: appState.company.id,
-        });
+        await addProject({ name: projectName, companyId: appState.company.id });
         showToast(`Chat room "${projectName}" created!`, 'success');
         document.getElementById('new-project-input-chat').value = '';
     } catch (error) {
         console.error("Error adding project/chat room:", error);
-        showToast("Failed to create new chat room.", 'error');
+        showToast("Failed to create new chat room.", "error");
     }
 }
