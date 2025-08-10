@@ -474,15 +474,25 @@ function removeParticipant(peerId) {
 }
 
 function addRemoteAudio(peerId, stream) {
+    // Prevent adding duplicate audio elements
     if (document.getElementById(`audio-${peerId}`)) return;
 
     const audio = document.createElement('audio');
     audio.id = `audio-${peerId}`;
     audio.srcObject = stream;
     audio.autoplay = true;
-    audio.playsInline = true;
+    audio.playsInline = true; 
     DOM.remoteAudioContainer.appendChild(audio);
 
+    // ** THE FIX IS HERE **
+    // Explicitly call play() to satisfy browser autoplay policies.
+    // Use a try-catch block to handle potential errors.
+    audio.play().catch(error => {
+        console.error(`Error playing audio for peer ${peerId}:`, error);
+        showToast("Could not play remote audio. Please click the page to enable.", "error");
+    });
+
+    // Attach the voice activity detector to the new stream
     const avatar = document.getElementById(`avatar-${peerId}`);
     if (avatar) {
         setupVoiceActivityDetector(stream, avatar, peerId);
