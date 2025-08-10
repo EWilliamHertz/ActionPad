@@ -1,20 +1,26 @@
 // FILE: js/app.js
-import { auth } from './firebase-config.js';
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { signOut } from './services/auth.js';
-import { getUserProfile } from './services/user.js';
-import { getCompany } from './services/company.js';
-import { listenToCompanyTasks } from './services/task.js';
-import { listenToCompanyProjects, uploadProjectLogo, updateProject } from './services/project.js';
-import { manageUserPresence, listenToCompanyPresence } from './services/presence.js';
-import { listenToNotifications, markNotificationsAsRead } from './services/notification.js';
-import { listenToProjectChat, addChatMessage } from './services/chat.js';
-
-import { initializeI18n, setLanguage } from './i18n.js';
+import { auth, db, storage } from './firebase-config.js';
+import { onAuthStateChanged, signOut as firebaseSignOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+    doc,
+    getDoc,
+    onSnapshot,
+    collection,
+    query,
+    where,
+    updateDoc
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+    ref as storageRef,
+    uploadBytes,
+    getDownloadURL
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+import { initializeI18n } from './i18n.js';
 import * as UImanager from './ui/uiManager.js';
 import * as taskController from './taskController.js';
 import { initCommandPalette } from './ui/commandPalette.js';
 import { showToast } from './toast.js';
+// We are no longer importing from the services/* files that caused the error
 
 const appState = {
     user: null, profile: null, company: null, team: [], projects: [], tasks: [],
@@ -25,9 +31,6 @@ const appState = {
     tasksListener: null,
     projectsListener: null,
     presenceListener: null,
-    chatListener: null,
-    notificationsListener: null,
-    sidebarChatListener: null,
 };
 
 window.appState = appState;
@@ -36,64 +39,35 @@ document.addEventListener('DOMContentLoaded', () => {
     onAuthStateChanged(auth, async user => {
         if (user && user.emailVerified) {
             appState.user = user;
-            const profileSnap = await getUserProfile(user.uid);
-            if (!profileSnap.exists()) {
-                showToast("User profile not found!", "error");
-                signOut();
-                return;
-            }
-            const profile = profileSnap.data();
-
-            const companies = profile.companies || [];
-            const companyIdToLoad = localStorage.getItem('selectedCompanyId') || companies[0]?.companyId;
-
+            const companyIdToLoad = localStorage.getItem('selectedCompanyId');
             if (companyIdToLoad) {
-                // FIX: Ensure companyId is set in localStorage BEFORE initializing to prevent redirect loops.
-                localStorage.setItem('selectedCompanyId', companyIdToLoad);
                 initialize(companyIdToLoad);
             } else {
                 window.location.replace('dashboard.html');
             }
         } else {
-            if (!window.location.pathname.includes('login.html') && !window.location.pathname.includes('register.html')) {
-                window.location.replace('login.html');
-            }
+            window.location.replace('login.html');
         }
     });
 });
 
-const getUserProfileWithRetry = async (userId, retries = 3, delay = 1000) => {
-    for (let i = 0; i < retries; i++) {
-        const profileSnap = await getUserProfile(userId);
-        if (profileSnap.exists()) {
-            return profileSnap;
-        }
-        await new Promise(res => setTimeout(res, delay));
-    }
-    throw new Error("Your user profile could not be found. Please contact support.");
-};
-
 async function initialize(companyId) {
     try {
-        console.log(`Initialization started for company: ${companyId}`);
-
-        const profileSnap = await getUserProfileWithRetry(appState.user.uid);
+        const profileSnap = await getDoc(doc(db, 'users', appState.user.uid));
+        if (!profileSnap.exists()) throw new Error("User profile not found.");
         const fullProfile = profileSnap.data();
         const companyMembership = fullProfile.companies.find(c => c.companyId === companyId);
-
-        if (!companyMembership) {
-            throw new Error("You are not a member of this company.");
-        }
+        if (!companyMembership) throw new Error("You are not a member of this company.");
 
         appState.profile = {
             uid: appState.user.uid,
             ...fullProfile,
-            companyRole: companyMembership.role // Set the role for the current company
+            companyRole: companyMembership.role
         };
 
-        const companySnap = await getCompany(companyId);
+        const companySnap = await getDoc(doc(db, 'companies', companyId));
         if (!companySnap.exists()) throw new Error("Company data not found.");
-        appState.company = {id: companySnap.id, ...companySnap.data()};
+        appState.company = { id: companySnap.id, ...companySnap.data() };
 
         taskController.initTaskController(appState);
         UImanager.initUIManager(appState);
@@ -102,11 +76,8 @@ async function initialize(companyId) {
 
         setupUI();
         setupListeners();
-        
-        manageUserPresence(appState.user, companyId);
 
         document.getElementById('app-container').classList.remove('hidden');
-        console.log("Initialization complete. App is ready.");
 
     } catch (error) {
         console.error("CRITICAL INITIALIZATION FAILURE:", error);
@@ -119,27 +90,26 @@ async function initialize(companyId) {
 function setupListeners() {
     if (appState.projectsListener) appState.projectsListener();
     if (appState.presenceListener) appState.presenceListener();
-    if (appState.notificationsListener) appState.notificationsListener();
 
-    appState.projectsListener = listenToCompanyProjects(appState.company.id, (projects) => {
-        appState.projects = projects;
+    // Listen to Projects
+    const projectsQuery = query(collection(db, 'projects'), where("companyId", "==", appState.company.id));
+    appState.projectsListener = onSnapshot(projectsQuery, (snapshot) => {
+        appState.projects = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         UImanager.renderProjectList(appState.projects, appState.currentProjectId);
         if (appState.currentProjectId !== 'all') {
-            const updatedProject = projects.find(p => p.id === appState.currentProjectId);
+            const updatedProject = appState.projects.find(p => p.id === appState.currentProjectId);
             if (updatedProject) UImanager.updateProjectHeader(updatedProject);
         }
     });
 
-    appState.presenceListener = listenToCompanyPresence(appState.company.id, (users) => {
-        appState.team = users;
+    // Listen to Team Presence
+    const usersQuery = query(collection(db, 'users'), where("companyIds", "array-contains", appState.company.id));
+    appState.presenceListener = onSnapshot(usersQuery, (snapshot) => {
+        appState.team = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         UImanager.renderTeamList(appState.team, appState.user.uid);
-        populateAssigneeFilter(users);
+        populateAssigneeFilter(appState.team);
     });
 
-    appState.notificationsListener = listenToNotifications(appState.user.uid, (notifications) => {
-        appState.notifications = notifications;
-    });
-    
     switchProject('all');
 }
 
@@ -155,8 +125,17 @@ function switchProject(projectId) {
         if (project) UImanager.updateProjectHeader(project);
     }
 
-    appState.tasksListener = listenToCompanyTasks(appState.company.id, projectId, (tasks) => {
-        appState.tasks = tasks;
+    let tasksQuery;
+    const baseTasksQuery = query(collection(db, 'tasks'), where("companyId", "==", appState.company.id));
+
+    if (projectId === 'all') {
+        tasksQuery = baseTasksQuery;
+    } else {
+        tasksQuery = query(baseTasksQuery, where("projectId", "==", projectId));
+    }
+
+    appState.tasksListener = onSnapshot(tasksQuery, (snapshot) => {
+        appState.tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         renderFilteredTasks();
     });
 }
@@ -168,34 +147,26 @@ function renderFilteredTasks() {
 
 function applyFiltersAndSorts(tasks) {
     let filteredTasks = [...tasks];
-
     if (appState.searchTerm) {
         const lowercasedTerm = appState.searchTerm.toLowerCase();
         filteredTasks = filteredTasks.filter(task => task.name.toLowerCase().includes(lowercasedTerm));
     }
-
     if (appState.filterAssignee !== 'all') {
         filteredTasks = filteredTasks.filter(task => task.assignedTo && task.assignedTo.includes(appState.filterAssignee));
     }
-
     const [sortBy, direction] = appState.sortTasks.split('-');
     const dir = direction === 'asc' ? 1 : -1;
     const priorityMap = { high: 3, medium: 2, low: 1 };
-
     filteredTasks.sort((a, b) => {
         switch (sortBy) {
-            case 'dueDate':
-                return (new Date(a.dueDate || 0) - new Date(b.dueDate || 0)) * dir;
-            case 'priority':
-                return ((priorityMap[a.priority] || 0) - (priorityMap[b.priority] || 0)) * dir;
-            case 'createdAt':
+            case 'dueDate': return (new Date(a.dueDate || 0) - new Date(b.dueDate || 0)) * dir;
+            case 'priority': return ((priorityMap[a.priority] || 0) - (priorityMap[b.priority] || 0)) * dir;
             default:
                 const timeA = a.createdAt?.seconds || 0;
                 const timeB = b.createdAt?.seconds || 0;
                 return (timeA - timeB) * dir;
         }
     });
-
     return filteredTasks;
 }
 
@@ -205,7 +176,7 @@ function setupUI() {
 
     document.getElementById('logout-button').addEventListener('click', () => {
         localStorage.removeItem('selectedCompanyId');
-        signOut();
+        firebaseSignOut(auth);
     });
 
     document.getElementById('view-switcher').addEventListener('click', (e) => {
@@ -215,7 +186,7 @@ function setupUI() {
             renderFilteredTasks();
         }
     });
-    
+
     document.getElementById('project-list').addEventListener('click', (e) => {
         if (e.target.matches('.project-item')) {
             const projectId = e.target.dataset.projectId;
@@ -239,21 +210,15 @@ function setupUI() {
 
     const logoUploadInput = document.getElementById('logo-upload-input');
     const changeLogoBtn = document.getElementById('change-logo-btn');
-    if(changeLogoBtn) changeLogoBtn.addEventListener('click', () => logoUploadInput.click());
-    if(logoUploadInput) logoUploadInput.addEventListener('change', handleLogoUpload);
+    if (changeLogoBtn) changeLogoBtn.addEventListener('click', () => logoUploadInput.click());
+    if (logoUploadInput) logoUploadInput.addEventListener('change', handleLogoUpload);
 
     document.getElementById('share-invite-button').addEventListener('click', () => {
-        const currentPath = window.location.href;
-        const basePath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
-        const inviteLink = `${basePath}register.html?ref=${appState.company.referralId}`;
+        const inviteLink = `${window.location.origin}/register.html?ref=${appState.company.referralId}`;
         UImanager.openModal(UImanager.DOM.inviteModal);
         document.getElementById('invite-link-input').value = inviteLink;
     });
 
-    document.getElementById('hamburger-menu').addEventListener('click', () => {
-        document.getElementById('sidebar').classList.toggle('open');
-    });
-    
     taskController.setupProjectForm(appState);
     taskController.setupTaskForm();
     UImanager.setupModals();
@@ -262,6 +227,7 @@ function setupUI() {
 
 function populateAssigneeFilter(team) {
     const select = document.getElementById('filter-assignee');
+    const currentVal = select.value;
     select.innerHTML = '<option value="all">All Members</option>';
     team.forEach(user => {
         const option = document.createElement('option');
@@ -269,7 +235,7 @@ function populateAssigneeFilter(team) {
         option.textContent = user.nickname;
         select.appendChild(option);
     });
-    select.value = appState.filterAssignee;
+    select.value = currentVal;
 }
 
 async function handleLogoUpload(e) {
@@ -277,8 +243,11 @@ async function handleLogoUpload(e) {
     if (!file || appState.currentProjectId === 'all') return;
     showToast('Uploading logo...', 'success');
     try {
-        const logoURL = await uploadProjectLogo(appState.currentProjectId, file);
-        await updateProject(appState.currentProjectId, { logoURL });
+        const filePath = `project_logos/${appState.currentProjectId}/${file.name}`;
+        const fileRef = storageRef(storage, filePath);
+        await uploadBytes(fileRef, file);
+        const logoURL = await getDownloadURL(fileRef);
+        await updateDoc(doc(db, 'projects', appState.currentProjectId), { logoURL });
         showToast('Logo updated!', 'success');
     } catch (error) {
         console.error("Logo upload failed:", error);
