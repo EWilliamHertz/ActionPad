@@ -14,19 +14,15 @@ import { getCompany } from './company.js';
 import { db } from '../firebase-config.js';
 import { query, where, orderBy, getDocs, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// Create direct references to collections
-const tasksCol = collection(db, 'tasks');
-const usersCol = collection(db, 'users');
-
 export const getCompanyDashboardData = async (companyId) => {
     const companySnap = await getCompany(companyId);
     const company = companySnap.exists() ? { id: companySnap.id, ...companySnap.data() } : null;
 
-    const tasksQuery = query(tasksCol, where("companyId", "==", companyId), orderBy("updatedAt", "desc"));
+    const tasksQuery = query(collection(db, 'tasks'), where("companyId", "==", companyId), orderBy("updatedAt", "desc"));
     const tasksSnap = await getDocs(tasksQuery);
     const tasks = tasksSnap.docs.map(doc => doc.data());
 
-    const membersQuery = query(usersCol, where("companyIds", "array-contains", companyId));
+    const membersQuery = query(collection(db, 'users'), where("companyIds", "array-contains", companyId));
     const membersSnap = await getDocs(membersQuery);
     const members = membersSnap.docs.map(doc => doc.data());
 
