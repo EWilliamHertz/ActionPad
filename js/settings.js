@@ -6,7 +6,7 @@ import {
     updateUserProfile, 
     uploadAvatar,
 } from './services/user.js';
-import { updateUserPassword } from './services/auth.js';
+import { updateUserPassword, deleteUserAccount } from './services/auth.js';
 import { getCompany } from './services/company.js';
 import { showToast } from './toast.js';
 
@@ -23,6 +23,10 @@ const avatarPreview = document.getElementById('avatar-preview');
 const companySelect = document.getElementById('company-select');
 const roleInput = document.getElementById('profile-companyrole');
 const nicknameInput = document.getElementById('profile-nickname');
+const deleteAccountButton = document.getElementById('delete-account-button');
+const deleteAccountModal = document.getElementById('delete-account-modal');
+const deleteAccountForm = document.getElementById('delete-account-form');
+const modalCloseButtons = document.querySelectorAll('.modal-close');
 
 // Listen for authentication state changes
 onAuthStateChanged(auth, user => {
@@ -183,6 +187,42 @@ if (passwordForm) {
             passwordForm.reset();
         } catch (error) {
             showToast(`Password update failed: ${error.message}`, 'error');
+        }
+    });
+}
+
+// Handle Delete Account flow
+if (deleteAccountButton) {
+    deleteAccountButton.addEventListener('click', () => {
+        deleteAccountModal.classList.remove('hidden');
+    });
+}
+
+if (modalCloseButtons) {
+    modalCloseButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            btn.closest('.modal-overlay').classList.add('hidden');
+            deleteAccountForm.reset();
+        });
+    });
+}
+
+if (deleteAccountForm) {
+    deleteAccountForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const password = document.getElementById('delete-password').value;
+        const deleteBtn = e.target.querySelector('button[type="submit"]');
+        deleteBtn.disabled = true;
+
+        try {
+            await deleteUserAccount(password);
+            showToast('Account successfully deleted.', 'success');
+            // Redirect after a short delay to allow the toast to show
+            setTimeout(() => window.location.replace('login.html'), 2000);
+        } catch (error) {
+            console.error("Account deletion failed:", error);
+            showToast(`Deletion failed: ${error.message}`, 'error');
+            deleteBtn.disabled = false;
         }
     });
 }
