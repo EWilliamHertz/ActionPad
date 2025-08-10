@@ -1,14 +1,39 @@
-import { doc, updateDoc, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { doc, updateDoc, query, where, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { getDatabase, ref, onValue, goOffline, goOnline, onDisconnect, set } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
 import { db } from '../firebase-config.js';
 import { usersCollection } from './firestore.js';
-import { serverTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
-export const manageUserPresence = async (user, companyId) => {
+// This function now uses both Firestore and the Realtime Database for presence.
+export const manageUserPresence = (user) => {
+    const rtdb = getDatabase();
+    const userStatusDatabaseRef = ref(rtdb, '/status/' + user.uid);
     const userStatusFirestoreRef = doc(db, 'users', user.uid);
-    await updateDoc(userStatusFirestoreRef, {
+
+    const isOfflineForRTDB = {
+        online: false,
+        last_changed: serverTimestamp()
+    };
+    const isOnlineForRTDB = {
         online: true,
-        last_changed: serverTimestamp(),
-        activeCompany: companyId
+        last_changed: serverTimestamp()
+    };
+
+    // Listen for connection state changes
+    onValue(ref(rtdb, '.info/connected'), (snapshot) => {
+        if (snapshot.val() === false) {
+            // If we lose connection, update our Firestore status
+            updateDoc(userStatusFirestoreRef, isOfflineForRTDB);
+            return;
+        }
+
+        // When we connect, set up the onDisconnect hook.
+        // This is the magic of RTDB: it runs on the server when the client disconnects.
+        onDisconnect(userStatusDatabaseRef).set(isOfflineForRTDB).then(() => {
+            // Once the disconnect hook is configured, set the user's status to online.
+            set(userStatusDatabaseRef, isOnlineForRTDB);
+            // Also update Firestore to be online.
+            updateDoc(userStatusFirestoreRef, isOnlineForRTDB);
+        });
     });
 };
 
