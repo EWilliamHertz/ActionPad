@@ -1,10 +1,7 @@
 import { doc, updateDoc, getDoc, arrayUnion, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 import { storage, db } from '../firebase-config.js';
-
-// Create a direct reference to the tasks collection
-const tasksCol = collection(db, 'tasks');
-
+https://github.com/EWilliamHertz/ActionPad/edit/main/js/services/attachment.js
 export const uploadTaskAttachment = async (taskId, file) => {
     const filePath = `task_attachments/${taskId}/${Date.now()}_${file.name}`;
     const fileRef = storageRef(storage, filePath);
@@ -18,7 +15,7 @@ export const uploadTaskAttachment = async (taskId, file) => {
         type: file.type,
         uploadedAt: serverTimestamp()
     };
-    const taskRef = doc(tasksCol, taskId);
+    const taskRef = doc(collection(db, 'tasks'), taskId);
     await updateDoc(taskRef, {
         attachments: arrayUnion(attachmentData)
     });
@@ -29,7 +26,7 @@ export const deleteAttachment = async (taskId, attachment) => {
     const fileRef = storageRef(storage, attachment.path);
     await deleteObject(fileRef);
 
-    const taskRef = doc(tasksCol, taskId);
+    const taskRef = doc(collection(db, 'tasks'), taskId);
     const taskSnap = await getDoc(taskRef);
     if(taskSnap.exists()){
         const existingAttachments = taskSnap.data().attachments || [];
@@ -37,4 +34,3 @@ export const deleteAttachment = async (taskId, attachment) => {
         await updateDoc(taskRef, { attachments: updatedAttachments });
     }
 };
-
