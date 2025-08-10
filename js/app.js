@@ -20,7 +20,6 @@ import * as UImanager from './ui/uiManager.js';
 import * as taskController from './taskController.js';
 import { initCommandPalette } from './ui/commandPalette.js';
 import { showToast } from './toast.js';
-// We are no longer importing from the services/* files that caused the error
 
 const appState = {
     user: null, profile: null, company: null, team: [], projects: [], tasks: [],
@@ -43,9 +42,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (companyIdToLoad) {
                 initialize(companyIdToLoad);
             } else {
+                // This is the safety net for private Browse
                 window.location.replace('dashboard.html');
             }
-        } else {
+        } else if (!user) {
             window.location.replace('login.html');
         }
     });
@@ -55,9 +55,16 @@ async function initialize(companyId) {
     try {
         const profileSnap = await getDoc(doc(db, 'users', appState.user.uid));
         if (!profileSnap.exists()) throw new Error("User profile not found.");
+
         const fullProfile = profileSnap.data();
         const companyMembership = fullProfile.companies.find(c => c.companyId === companyId);
-        if (!companyMembership) throw new Error("You are not a member of this company.");
+        
+        // Safety check: if stored company is invalid, go back to dashboard
+        if (!companyMembership) {
+            localStorage.removeItem('selectedCompanyId');
+            window.location.replace('dashboard.html');
+            return;
+        }
 
         appState.profile = {
             uid: appState.user.uid,
@@ -91,7 +98,6 @@ function setupListeners() {
     if (appState.projectsListener) appState.projectsListener();
     if (appState.presenceListener) appState.presenceListener();
 
-    // Listen to Projects
     const projectsQuery = query(collection(db, 'projects'), where("companyId", "==", appState.company.id));
     appState.projectsListener = onSnapshot(projectsQuery, (snapshot) => {
         appState.projects = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -102,7 +108,6 @@ function setupListeners() {
         }
     });
 
-    // Listen to Team Presence
     const usersQuery = query(collection(db, 'users'), where("companyIds", "array-contains", appState.company.id));
     appState.presenceListener = onSnapshot(usersQuery, (snapshot) => {
         appState.team = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -127,13 +132,8 @@ function switchProject(projectId) {
 
     let tasksQuery;
     const baseTasksQuery = query(collection(db, 'tasks'), where("companyId", "==", appState.company.id));
-
-    if (projectId === 'all') {
-        tasksQuery = baseTasksQuery;
-    } else {
-        tasksQuery = query(baseTasksQuery, where("projectId", "==", projectId));
-    }
-
+    tasksQuery = (projectId === 'all') ? baseTasksQuery : query(baseTasksQuery, where("projectId", "==", projectId));
+    
     appState.tasksListener = onSnapshot(tasksQuery, (snapshot) => {
         appState.tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         renderFilteredTasks();
@@ -148,26 +148,21 @@ function renderFilteredTasks() {
 function applyFiltersAndSorts(tasks) {
     let filteredTasks = [...tasks];
     if (appState.searchTerm) {
-        const lowercasedTerm = appState.searchTerm.toLowerCase();
-        filteredTasks = filteredTasks.filter(task => task.name.toLowerCase().includes(lowercasedTerm));
+        filteredTasks = filteredTasks.filter(task => task.name.toLowerCase().includes(appState.searchTerm.toLowerCase()));
     }
     if (appState.filterAssignee !== 'all') {
-        filteredTasks = filteredTasks.filter(task => task.assignedTo && task.assignedTo.includes(appState.filterAssignee));
+        filteredTasks = filteredTasks.filter(task => task.assignedTo?.includes(appState.filterAssignee));
     }
     const [sortBy, direction] = appState.sortTasks.split('-');
     const dir = direction === 'asc' ? 1 : -1;
     const priorityMap = { high: 3, medium: 2, low: 1 };
-    filteredTasks.sort((a, b) => {
+    return filteredTasks.sort((a, b) => {
         switch (sortBy) {
             case 'dueDate': return (new Date(a.dueDate || 0) - new Date(b.dueDate || 0)) * dir;
             case 'priority': return ((priorityMap[a.priority] || 0) - (priorityMap[b.priority] || 0)) * dir;
-            default:
-                const timeA = a.createdAt?.seconds || 0;
-                const timeB = b.createdAt?.seconds || 0;
-                return (timeA - timeB) * dir;
+            default: return ((a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0)) * dir;
         }
     });
-    return filteredTasks;
 }
 
 function setupUI() {
@@ -189,8 +184,7 @@ function setupUI() {
 
     document.getElementById('project-list').addEventListener('click', (e) => {
         if (e.target.matches('.project-item')) {
-            const projectId = e.target.dataset.projectId;
-            if (projectId !== appState.currentProjectId) switchProject(projectId);
+            switchProject(e.target.dataset.projectId);
         }
     });
 
@@ -208,10 +202,8 @@ function setupUI() {
         renderFilteredTasks();
     });
 
-    const logoUploadInput = document.getElementById('logo-upload-input');
-    const changeLogoBtn = document.getElementById('change-logo-btn');
-    if (changeLogoBtn) changeLogoBtn.addEventListener('click', () => logoUploadInput.click());
-    if (logoUploadInput) logoUploadInput.addEventListener('change', handleLogoUpload);
+    document.getElementById('logo-upload-input').addEventListener('change', handleLogoUpload);
+    document.getElementById('change-logo-btn').addEventListener('click', () => document.getElementById('logo-upload-input').click());
 
     document.getElementById('share-invite-button').addEventListener('click', () => {
         const inviteLink = `${window.location.origin}/register.html?ref=${appState.company.referralId}`;
@@ -230,9 +222,7 @@ function populateAssigneeFilter(team) {
     const currentVal = select.value;
     select.innerHTML = '<option value="all">All Members</option>';
     team.forEach(user => {
-        const option = document.createElement('option');
-        option.value = user.id;
-        option.textContent = user.nickname;
+        const option = new Option(user.nickname, user.id);
         select.appendChild(option);
     });
     select.value = currentVal;
