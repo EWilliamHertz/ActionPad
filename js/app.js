@@ -61,7 +61,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function initialize(companyId) {
     try {
-        // Corrected: getUserProfile takes the user's UID, not the companyId
         const profileSnap = await getUserProfile(appState.user.uid);
         if (!profileSnap.exists()) throw new Error("User profile not found.");
 
@@ -167,6 +166,25 @@ function applyFiltersAndSorts(tasks) {
     });
 }
 
+// ** NEW: Robust copy-to-clipboard function **
+function copyToClipboard(text) {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed"; // Prevent scrolling to bottom of page in MS Edge.
+    textArea.style.left = "-9999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+        document.execCommand('copy');
+        showToast("Link copied to clipboard!", "success");
+    } catch (err) {
+        console.error('Failed to copy text: ', err);
+        showToast("Failed to copy link.", "error");
+    }
+    document.body.removeChild(textArea);
+}
+
 function setupUI() {
     initializeI18n();
     UImanager.updateUserInfo(appState.profile, appState.company);
@@ -207,11 +225,24 @@ function setupUI() {
     document.getElementById('logo-upload-input').addEventListener('change', handleLogoUpload);
     document.getElementById('change-logo-btn').addEventListener('click', () => document.getElementById('logo-upload-input').click());
 
+    // ** MODIFIED: Event listener for the invite button **
     document.getElementById('share-invite-button').addEventListener('click', () => {
-        const inviteLink = `${window.location.origin}/register.html?ref=${appState.company.referralId}`;
-        document.getElementById('invite-link-input').value = inviteLink;
+        // Create a relative path for the registration link
+        const inviteLink = `register.html?ref=${appState.company.referralId}`;
+        const fullUrl = new URL(inviteLink, window.location.href).href;
+        
+        document.getElementById('invite-link-input').value = fullUrl;
         UImanager.openModal(document.getElementById('invite-modal'));
     });
+
+    // ** NEW: Add listener for the actual copy button inside the modal **
+    const copyBtn = document.getElementById('copy-invite-link-button');
+    if(copyBtn) {
+        copyBtn.addEventListener('click', () => {
+            const linkToCopy = document.getElementById('invite-link-input').value;
+            copyToClipboard(linkToCopy);
+        });
+    }
 
     taskController.setupProjectForm(appState);
     taskController.setupTaskForm();
