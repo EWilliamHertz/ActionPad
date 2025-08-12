@@ -23,7 +23,6 @@ body {
     font-size: 16px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* FIX: The 'overflow: hidden' that was here has been removed. */
 }
 
 .hidden { display: none !important; }
@@ -65,7 +64,6 @@ button, input, select, textarea {
     min-height: 100vh;
     padding: 2rem 1rem;
     box-sizing: border-box;
-    /* FIX: Added overflow-y to ensure long forms like register.html can scroll. */
     overflow-y: auto;
 }
 .auth-box {
@@ -138,7 +136,6 @@ hr { border: none; border-top: 1px solid var(--border-color); margin: 1rem 0; }
 #logout-button:hover { background-color: var(--subtle-text-color); color: white; }
 .main-layout { display: grid; grid-template-columns: 260px 1fr; flex-grow: 1; overflow: hidden; }
 
-/* FIX: Sidebar scrolling behavior */
 aside#sidebar {
     background: #FCFCFC;
     border-right: 1px solid var(--border-color);
@@ -278,7 +275,7 @@ main { padding: 2rem; overflow-y: auto; }
 .task-actions { margin-left: auto; }
 .task-actions button { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--subtle-text-color); padding: 0.25rem; transition: color 0.2s; }
 .task-actions button:hover { color: var(--primary-color); }
-.task-item-footer { display: flex; justify-content: flex-end; align-items: center; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color); }
+.task-item-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color); }
 .assignee-avatars { display: flex; }
 .avatar {
     width: 28px; height: 28px; border-radius: 50%; background-color: var(--primary-color);
@@ -288,6 +285,7 @@ main { padding: 2rem; overflow-y: auto; }
 }
 .avatar:first-child { margin-left: 0; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
+.task-dependencies { font-size: 0.85rem; color: var(--subtle-text-color); }
 
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; }
 .modal-content { background: var(--surface-color); padding: 2rem; border-radius: 8px; width: 90%; max-width: 600px; position: relative; max-height: 90vh; overflow-y: auto; }
@@ -517,14 +515,13 @@ main { padding: 2rem; overflow-y: auto; }
 .task-controls .form-group label { font-size: 0.8rem; text-transform: uppercase; color: var(--subtle-text-color); }
 .task-controls select { background-color: var(--surface-color); }
 
-/* NEW & IMPROVED Voice Room Member List Styles */
 .voice-room-item {
     display: flex;
     flex-direction: column;
     align-items: stretch;
     transition: background-color 0.2s;
     border-radius: 6px;
-    border: 1px solid transparent; /* Add transparent border for smooth transition */
+    border: 1px solid transparent; 
 }
 .voice-room-item.active-room {
     background-color: #e6f2ff;
@@ -541,7 +538,7 @@ main { padding: 2rem; overflow-y: auto; }
     background-color: #e9ecef;
 }
 .voice-room-members {
-    padding: 0.5rem 0.5rem 0.5rem 3rem; /* Indent under the icon */
+    padding: 0.5rem 0.5rem 0.5rem 3rem; 
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
@@ -553,19 +550,17 @@ main { padding: 2rem; overflow-y: auto; }
     height: 28px;
     border-radius: 50%;
     object-fit: cover;
-    margin: 0; /* Remove negative margin for this context */
+    margin: 0; 
 }
 .voice-room-members.hidden {
     display: none;
 }
 
-/* --- Styles for Task Filter/Sort Controls --- */
 .task-controls { display: flex; gap: 1.5rem; margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); }
 .task-controls .form-group { margin: 0; }
 .task-controls .form-group label { font-size: 0.8rem; text-transform: uppercase; color: var(--subtle-text-color); }
 .task-controls select { background-color: var(--surface-color); }
 
-/* NEW: Styles for Company Logo on Dashboard Card */
 .company-card-header {
     display: flex;
     align-items: center;
@@ -579,7 +574,6 @@ main { padding: 2rem; overflow-y: auto; }
     background-color: var(--background-color);
 }
 
-/* NEW: Styles for "My Tasks" Widget */
 .my-tasks-widget {
     margin-top: 1.5rem;
     border-top: 1px solid var(--border-color);
@@ -611,7 +605,6 @@ main { padding: 2rem; overflow-y: auto; }
     margin-right: 0.5rem;
 }
 
-/* NEW: Styles for Calendar View */
 #calendar-view {
     display: flex;
     flex-direction: column;
@@ -690,7 +683,6 @@ main { padding: 2rem; overflow-y: auto; }
 .calendar-task-item.priority-medium { background-color: var(--priority-medium); color: var(--text-color); }
 .calendar-task-item.priority-low { background-color: var(--priority-low); }
 
-/* NEW: Styles for the speaking indicator */
 .avatar-small {
     position: relative;
 }
@@ -707,7 +699,7 @@ main { padding: 2rem; overflow-y: auto; }
     opacity: 0;
     transition: opacity 0.2s ease-in-out;
     animation: pulse-animation 1.5s infinite;
-    pointer-events: none; /* Make sure it doesn't block clicks */
+    pointer-events: none; 
 }
 
 .avatar-small .speaking-indicator.speaking {
@@ -752,7 +744,6 @@ main { padding: 2rem; overflow-y: auto; }
     transition: border 0.2s, box-shadow 0.2s;
 }
 
-/* This is the "green aura" effect for when a user is speaking */
 .avatar-small.speaking img {
     border: 2px solid #4caf50;
     box-shadow: 0 0 10px 2px rgba(76, 175, 80, 0.7);
@@ -770,9 +761,6 @@ main { padding: 2rem; overflow-y: auto; }
         box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
     }
 }
-/* Add these new styles to the end of your existing style.css file */
-
-/* NEW: Voice Controls Panel Styles */
 .voice-controls {
     margin-top: 1.5rem;
     padding: 1rem;
