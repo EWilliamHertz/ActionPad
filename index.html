@@ -184,11 +184,24 @@
                             <label for="edit-task-due-date">Due Date</label>
                             <input type="date" id="edit-task-due-date">
                         </div>
+                        <div class="form-group">
+                            <label for="edit-task-recurrence">Recurrence</label>
+                            <select id="edit-task-recurrence">
+                                <option value="none">None</option>
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly">Monthly</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-section">
                     <label for="edit-task-description">Description</label>
                     <textarea id="edit-task-description" placeholder="Add a more detailed description..."></textarea>
+                </div>
+                <div class="modal-section">
+                    <label>Dependencies</label>
+                    <select id="task-dependencies" multiple></select>
                 </div>
                  <div class="modal-section">
                     <label>Attachments</label>
