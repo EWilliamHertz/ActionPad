@@ -69,6 +69,8 @@ const handleAddTask = (text) => {
         assignedTo: [],
         subtasks: [],
         attachments: [],
+        dependencies: [],
+        recurrence: 'none',
         language: localStorage.getItem('actionPadLanguage') || 'en',
         order: Date.now(),
         createdAt: serverTimestamp(),
@@ -100,6 +102,7 @@ export const handleEditTask = async () => {
 
         const oldAssignees = taskSnap.data().assignedTo || [];
         const newAssignees = Array.from(document.getElementById('edit-task-assignees').selectedOptions).map(option => option.value);
+        const dependencies = Array.from(document.getElementById('task-dependencies').selectedOptions).map(option => option.value);
 
         const updatedData = {
             name: document.getElementById('edit-task-name').value,
@@ -109,6 +112,8 @@ export const handleEditTask = async () => {
             status: document.getElementById('edit-task-status').value,
             projectId: document.getElementById('edit-task-project').value,
             assignedTo: newAssignees,
+            dependencies: dependencies,
+            recurrence: document.getElementById('edit-task-recurrence').value,
             updatedAt: serverTimestamp()
         };
 
@@ -132,7 +137,28 @@ export const handleEditTask = async () => {
 };
 
 export const toggleTaskStatus = (taskId, isDone) => {
-    updateTaskStatus(taskId, isDone ? 'done' : 'todo');
+    const task = appState.tasks.find(t => t.id === taskId);
+    if (isDone && task && task.recurrence && task.recurrence !== 'none') {
+        const newDueDate = new Date(task.dueDate);
+        switch (task.recurrence) {
+            case 'daily':
+                newDueDate.setDate(newDueDate.getDate() + 1);
+                break;
+            case 'weekly':
+                newDueDate.setDate(newDueDate.getDate() + 7);
+                break;
+            case 'monthly':
+                newDueDate.setMonth(newDueDate.getMonth() + 1);
+                break;
+        }
+        updateDoc(doc(db, 'tasks', taskId), {
+            status: 'todo',
+            dueDate: newDueDate.toISOString().split('T')[0],
+            updatedAt: serverTimestamp()
+        });
+    } else {
+        updateTaskStatus(taskId, isDone ? 'done' : 'todo');
+    }
 };
 
 export const updateTaskStatus = (taskId, newStatus) => {
@@ -224,12 +250,15 @@ const parseTaskInput = (text) => {
     let taskName = text;
     let priority = 'medium';
     let dueDate = null;
+    let recurrence = 'none';
+
     const priorityRegex = /\b(high|medium|low)\s?priority\b/i;
     const priorityMatch = text.match(priorityRegex);
     if (priorityMatch) {
         priority = priorityMatch[1].toLowerCase();
         taskName = taskName.replace(priorityRegex, '').trim();
     }
+
     const today = new Date();
     if (/\btomorrow\b/i.test(taskName)) {
         dueDate = new Date();
@@ -244,11 +273,25 @@ const parseTaskInput = (text) => {
         dueDate.setDate(today.getDate() + (5 + 7 - today.getDay()) % 7);
         taskName = taskName.replace(/\bnext friday\b/i, '').trim();
     }
+
+    if (/\bevery day\b/i.test(taskName)) {
+        recurrence = 'daily';
+        taskName = taskName.replace(/\bevery day\b/i, '').trim();
+    } else if (/\bevery week\b/i.test(taskName)) {
+        recurrence = 'weekly';
+        taskName = taskName.replace(/\bevery week\b/i, '').trim();
+    } else if (/\bevery month\b/i.test(taskName)) {
+        recurrence = 'monthly';
+        taskName = taskName.replace(/\bevery month\b/i, '').trim();
+    }
+
+
     return {
         name: taskName,
         priority: priority,
         dueDate: dueDate ? dueDate.toISOString().split('T')[0] : '',
         status: 'todo',
-        description: ''
+        description: '',
+        recurrence: recurrence
     };
 };
