@@ -33,6 +33,7 @@ export const openModal = (modalElement, task = null) => {
         document.getElementById('edit-task-due-date').value = task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '';
         document.getElementById('edit-task-priority').value = task.priority || 'low';
         document.getElementById('edit-task-status').value = task.status || 'todo';
+        document.getElementById('edit-task-recurrence').value = task.recurrence || 'none';
 
         // Populate assignees dropdown
         const assigneesSelect = document.getElementById('edit-task-assignees');
@@ -55,6 +56,20 @@ export const openModal = (modalElement, task = null) => {
             }
             projectSelect.appendChild(option);
         });
+        
+        // Populate dependencies dropdown
+        const dependenciesSelect = document.getElementById('task-dependencies');
+        dependenciesSelect.innerHTML = '';
+        appState.tasks.forEach(t => {
+            if (t.id !== task.id) {
+                const option = new Option(t.name, t.id);
+                if (task.dependencies && task.dependencies.includes(t.id)) {
+                    option.selected = true;
+                }
+                dependenciesSelect.appendChild(option);
+            }
+        });
+
 
         // Render details like subtasks, attachments, and comments
         renderSubtasks(task);
