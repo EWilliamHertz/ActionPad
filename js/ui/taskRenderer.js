@@ -37,6 +37,8 @@ export const createTaskElement = (task, state) => {
     item.className = `task-item ${task.status === 'done' ? 'done' : ''} ${task.isNew ? 'new-item' : ''}`;
     item.dataset.id = task.id;
 
+    const dependencies = task.dependencies?.map(depId => state.tasks.find(t => t.id === depId)?.name).filter(Boolean) || [];
+
     item.innerHTML = `
         <div class="task-item-main" ${!isViewer ? 'draggable="true"' : ''}>
             <input type="checkbox" class="task-checkbox" ${task.status === 'done' ? 'checked' : ''} ${isViewer ? 'disabled' : ''}>
@@ -46,6 +48,7 @@ export const createTaskElement = (task, state) => {
                 <div class="task-details">
                     ${task.dueDate ? `<span>📅 ${new Date(task.dueDate).toLocaleDateString()}</span>` : ''}
                     <span class="priority-dot priority-${task.priority || 'low'}"></span>
+                    ${task.recurrence && task.recurrence !== 'none' ? `<span>🔁 ${task.recurrence.charAt(0).toUpperCase() + task.recurrence.slice(1)}</span>` : ''}
                 </div>
             </div>
             <div class="task-actions">
@@ -60,6 +63,7 @@ export const createTaskElement = (task, state) => {
             </div>
         </div>
         <div class="task-item-footer">
+            ${dependencies.length > 0 ? `<div class="task-dependencies">Blocked by: ${dependencies.join(', ')}</div>` : ''}
             <div class="assignee-avatars"></div>
         </div>
     `;
